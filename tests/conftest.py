@@ -40,8 +40,9 @@ class Slack(slack_sdk.web.WebClient):
             case 'auth.test': data = {'ok': True, 'team_id': 'TXXX', 'user_id': self.identity}
             case 'users.list': data = {'ok': True, **page('members', self.workspace['users'], arguments)}
             case 'conversations.list': data = {'ok': True, **page('channels', [channel for channel in self.workspace['channels'] if ('private_channel' if channel['is_private'] else 'public_channel') in arguments['types'].split(',')], arguments)}
-            case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'][arguments['channel']], arguments)}
+            case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'].get(arguments['channel'], []), arguments)}
             case 'conversations.create': return self.create(arguments)
+            case 'conversations.invite': return self.invite(arguments)
             case _: raise NotImplementedError(api_method)
 
         return respond(self, api_method, arguments, data)
@@ -62,10 +63,29 @@ class Slack(slack_sdk.web.WebClient):
 
         channel = {'id': f'CXXX{len(channels) + 1}', 'name': arguments['name'], 'is_private': arguments['is_private'], 'is_archived': False, 'created': self.workspace['clock'], 'creator': self.identity}
         channels.append(channel)
+        self.workspace['members'][channel['id']] = [self.identity]
 
         if failure == 'lost': raise TimeoutError('xxx')
 
         return respond(self, 'conversations.create', arguments, {'ok': True, 'channel': channel})
+
+    def invite(
+        self,
+        arguments: dict[str, typing.Any]
+    ) -> slack_sdk.web.SlackResponse:
+
+        memberships: dict[str, list[str]] = self.workspace['members']
+        refusals = self.workspace['refusals']
+        requested: str = arguments['users']
+        members = memberships.setdefault(arguments['channel'], [])
+        users = requested.split(',')
+        errors = [{'user': user, 'ok': False, 'error': refusals[user]} for user in users if user in refusals]
+
+        members.extend(user for user in users if user not in refusals and user not in members)
+
+        if errors: return respond(self, 'conversations.invite', arguments, {'ok': False, 'error': 'failed_for_some_users', 'errors': errors})
+
+        return respond(self, 'conversations.invite', arguments, {'ok': True, 'channel': {'id': arguments['channel']}})
 
 @pytest.fixture
 def database(
@@ -81,7 +101,7 @@ def workspace() -> dict[str, typing.Any]:
     directory = pathlib.Path(os.path.join(pathlib.Path(__file__).parent, 'fixtures', 'slack'))
     users, channels, members = (json.loads(pathlib.Path(os.path.join(directory, name)).read_text(encoding = 'utf-8')) for name in ('users.list.json', 'conversations.list.json', 'conversations.members.json'))
 
-    return {'users': users, 'channels': channels, 'members': members, 'clock': 1793026800, 'failures': []}
+    return {'users': users, 'channels': channels, 'members': members, 'clock': 1793026800, 'failures': [], 'refusals': {}}
 
 @pytest.fixture
 def slack(

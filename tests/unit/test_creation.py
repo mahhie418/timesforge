@@ -5,8 +5,10 @@ import pytest
 import slack_sdk
 
 import timesforge.slack.creation
+import timesforge.slack.invitation
 import timesforge.storage
 import timesforge.times.history
+import timesforge.times.invitation
 import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
@@ -25,12 +27,15 @@ def requests(
 
 @pytest.fixture
 def creator(
+    database: timesforge.storage.Database,
     writer: slack_sdk.web.WebClient,
     slack: slack_sdk.web.WebClient,
     requests: timesforge.times.request.RequestIO
 ) -> timesforge.slack.creation.Creator:
 
-    return timesforge.slack.creation.Creator(writer, slack, requests, 'TXXX')
+    inviter = timesforge.slack.invitation.Inviter(slack, writer, timesforge.times.invitation.InvitationIO(database), 'TXXX')
+
+    return timesforge.slack.creation.Creator(writer, slack, requests, 'TXXX', inviter)
 
 def reserve(
     requests: timesforge.times.request.RequestIO,
@@ -55,7 +60,8 @@ def test_creation_channel_success(
     request = creator.create(reserve(requests), CHANGE)
 
     assert request is not None
-    assert (request.status, request.channel_id) == ('created', 'CXXX3')
+    assert (request.status, request.channel_id) == ('completed', 'CXXX3')
+    assert workspace['members']['CXXX3'] == ['UXXX0', 'UXXXB', 'UXXX1', 'UXXX2', 'UXXX3', 'UXXX4']
     assert workspace['channels'][-1] == {'id': 'CXXX3', 'name': 'times_yyy', 'is_private': False, 'is_archived': False, 'created': workspace['clock'], 'creator': 'UXXX0'}
     assert timesforge.times.registry.RegistryIO(database).load('TXXX', 'CXXX3') == timesforge.times.registry.Channel(channel_id = 'CXXX3', holder_id = 'UXXX1', first_name = 'Yyy', channel_name = 'times_yyy', creation = CREATION)
     assert timesforge.times.history.HistoryIO(database).load('TXXX', 1) == [timesforge.times.history.Entry(action = 'create', actor_id = 'UXXX1', target_id = 'UXXX1', channel_id = 'CXXX3', details = {'creator': 'UXXX0'}, creation = CHANGE)]
@@ -99,7 +105,7 @@ def test_creation_result_recovery(
     request = creator.create(reserve(requests), CHANGE)
 
     assert request is not None
-    assert (request.status, request.channel_id, request.error) == ('created', 'CXXX3', None)
+    assert (request.status, request.channel_id, request.error) == ('completed', 'CXXX3', None)
     assert names(workspace) == ['times_xxx', 'xxx', 'times_yyy']
 
 def test_creation_result_unknown(
@@ -120,7 +126,7 @@ def test_creation_result_unknown(
     request = creator.reconcile(request_id, CHANGE)
 
     assert request is not None
-    assert request.status == 'created'
+    assert request.status == 'completed'
     assert names(workspace) == ['times_xxx', 'xxx', 'times_yyy']
 
 def test_creation_request_busy(

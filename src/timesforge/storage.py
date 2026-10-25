@@ -129,6 +129,20 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         'DROP INDEX request_name',
         "CREATE UNIQUE INDEX request_name ON request (workspace_id, channel_name) WHERE request_status IN ('reserved', 'creating', 'reconciling')"
     ),
+    (
+        """
+        CREATE TABLE invitation (
+            workspace_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            invitation_status TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            error_message TEXT,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, channel_id, user_id)
+        ) STRICT
+        """,
+    ),
 )
 
 class DatabaseError(Exception):

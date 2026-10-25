@@ -7,6 +7,7 @@ import slack_sdk
 import slack_sdk.errors
 
 import timesforge.slack.api
+import timesforge.slack.invitation
 import timesforge.times.registry
 import timesforge.times.request
 
@@ -23,7 +24,8 @@ class Creator:
     waits for the owner; when Slack refuses, it fails. When nobody knows
     whether Slack created the channel, because the connection broke or Slack
     failed, the channel is looked for before it is created once more, so that
-    no request ever creates two channels.
+    no request ever creates two channels. Once the channel exists, the
+    eligible members of the workspace are invited to it.
     """
 
     def __init__(
@@ -31,7 +33,8 @@ class Creator:
         writer: slack_sdk.web.WebClient,
         reader: slack_sdk.web.WebClient,
         store: timesforge.times.request.RequestIO,
-        workspace_id: str
+        workspace_id: str,
+        inviter: timesforge.slack.invitation.Inviter
     ) -> None:
 
         """Initialises the creator.
@@ -44,12 +47,14 @@ class Creator:
             reader: Client with the bot token, which reads the channels.
             store: Requests of the workspace.
             workspace_id: Slack workspace ID.
+            inviter: Inviter of the members to the channels.
         """
 
         self._writer = writer
         self._reader = reader
         self._store = store
         self._workspace_id = workspace_id
+        self._inviter = inviter
 
     def create(
         self,
@@ -165,4 +170,8 @@ class Creator:
 
         registration = timesforge.times.registry.Channel(channel_id = channel['id'], holder_id = request.user_id, first_name = request.first_name, channel_name = channel['name'], creation = datetime.datetime.fromtimestamp(channel['created'], datetime.UTC))
 
-        self._store.finish(self._workspace_id, request.request_id, registration, creator_id = channel.get('creator', ''), now = now)
+        if not self._store.finish(self._workspace_id, request.request_id, registration, creator_id = channel.get('creator', ''), now = now): return
+        if not self._store.advance(self._workspace_id, request.request_id, now): return
+
+        self._inviter.invite(registration.channel_id, now)
+        self._store.complete(self._workspace_id, request.request_id, now)

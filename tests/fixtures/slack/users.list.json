@@ -1,5 +1,14 @@
 [
   {"id": "UXXX1", "team_id": "TXXX", "name": "xxx1", "deleted": false, "is_bot": false},
-  {"id": "UXXX2", "team_id": "TXXX", "name": "xxx2", "deleted": false, "is_bot": false},
-  {"id": "UXXX3", "team_id": "TXXX", "name": "xxx3", "deleted": false, "is_bot": false}
+  {"id": "UXXX2", "team_id": "TXXX", "name": "xxx2", "deleted": false, "is_bot": false, "is_admin": true},
+  {"id": "UXXX3", "team_id": "TXXX", "name": "xxx3", "deleted": false, "is_bot": false, "is_admin": true, "is_owner": true},
+  {"id": "UXXX4", "team_id": "TXXX", "name": "xxx4", "deleted": false, "is_bot": false, "is_admin": true, "is_owner": true, "is_primary_owner": true},
+  {"id": "UXXX5", "team_id": "TXXX", "name": "xxx5", "deleted": false, "is_bot": false, "is_restricted": true},
+  {"id": "UXXX6", "team_id": "TXXX", "name": "xxx6", "deleted": false, "is_bot": false, "is_restricted": true, "is_ultra_restricted": true},
+  {"id": "UXXX7", "team_id": "TXXX", "name": "xxx7", "deleted": true, "is_bot": false},
+  {"id": "UXXX8", "team_id": "TXXX", "name": "xxx8", "deleted": false, "is_bot": false, "is_invited_user": true},
+  {"id": "UXXX9", "team_id": "TYYY", "name": "xxx9", "deleted": false, "is_bot": false, "is_stranger": true},
+  {"id": "UXXXB", "team_id": "TXXX", "name": "xxxb", "deleted": false, "is_bot": true},
+  {"id": "UXXXW", "team_id": "TXXX", "name": "xxxw", "deleted": false, "is_bot": false, "is_workflow_bot": true},
+  {"id": "USLACKBOT", "team_id": "TXXX", "name": "slackbot", "deleted": false, "is_bot": false}
 ]

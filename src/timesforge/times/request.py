@@ -11,7 +11,7 @@ import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.registry
 
-type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 'reconciling', 'created', 'failed']
+type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 'reconciling', 'created', 'inviting', 'completed', 'failed']
 
 _REQUEST_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_id = ?'
 _OPEN_SELECT = "SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution', 'creating', 'reconciling')"
@@ -24,6 +24,8 @@ _REQUEST_LOSE = "UPDATE request SET request_status = 'reconciling', error_messag
 _REQUEST_POSTPONE = "UPDATE request SET request_status = 'pending_name_resolution', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'creating'"
 _REQUEST_FAIL = "UPDATE request SET request_status = 'failed', error_message = ?, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status IN ('creating', 'reconciling') RETURNING grant_id"
 _REQUEST_FINISH = "UPDATE request SET request_status = 'created', channel_id = ?, error_message = NULL, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status IN ('creating', 'reconciling') RETURNING user_id, grant_id"
+_REQUEST_ADVANCE = "UPDATE request SET request_status = 'inviting', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'created'"
+_REQUEST_COMPLETE = "UPDATE request SET request_status = 'completed', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'inviting'"
 _GRANT_RELEASE = "UPDATE recreation SET grant_status = 'unused', reserve_time = NULL WHERE grant_id = ? AND grant_status = 'reserved'"
 _GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE grant_id = ? AND grant_status = 'reserved'"
 
@@ -60,7 +62,7 @@ class Request:
         user_id: Slack user ID of the member who asked, who is to hold the channel.
         first_name: First name that the member entered.
         channel_name: Name of the channel, made from the first name.
-        status: reserved while the channel waits to be created, pending_name_resolution while another channel has its name, creating while Slack creates it, reconciling while nobody knows whether Slack created it, created once it exists, or failed when Slack refused to create it.
+        status: reserved while the channel waits to be created, pending_name_resolution while another channel has its name, creating while Slack creates it, reconciling while nobody knows whether Slack created it, created once it exists, inviting while members are invited to it, completed once they are, or failed when Slack refused to create it.
         grant_id: ID of the recreation grant reserved for the channel, or None when the member uses their first right.
         channel_id: Slack channel ID of the channel, or None until it is created.
         error: Why the last attempt failed or was lost, or None.
@@ -325,6 +327,49 @@ class RequestIO:
             timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'create', actor_id = row['user_id'], target_id = row['user_id'], channel_id = channel.channel_id, details = {'creator': creator_id}, creation = now))
 
             return True
+
+    def advance(
+        self,
+        workspace_id: str,
+        request_id: int,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Marks a request whose channel was created as inviting members to it.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            request_id: ID of the request.
+            now: The current time.
+
+        Returns:
+            Whether the caller may invite the members now.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_REQUEST_ADVANCE, (now.isoformat(), workspace_id, request_id)).rowcount == 1
+
+    def complete(
+        self,
+        workspace_id: str,
+        request_id: int,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Marks a request whose members were invited as completed.
+
+        Members whom Slack refused do not keep the request open; inviting
+        them again does not need it.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            request_id: ID of the request.
+            now: The current time.
+
+        Returns:
+            Whether the request was inviting members.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_REQUEST_COMPLETE, (now.isoformat(), workspace_id, request_id)).rowcount == 1
 
 def _decode(
     row: sqlite3.Row
