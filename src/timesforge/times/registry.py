@@ -12,6 +12,7 @@ type Source = typing.Literal['created', 'imported']
 type Status = typing.Literal['active', 'archived', 'deleted']
 
 _CHANNEL_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND channel_id = ?'
+_CURRENT_SELECT = "SELECT channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND channel_status != 'deleted' ORDER BY create_time"
 _HOLDER_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND holder_id = ? ORDER BY create_time'
 _CHANNEL_INSERT = 'INSERT INTO channel (workspace_id, channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, update_time, archive_time, delete_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 _CHANNEL_ARCHIVE = "UPDATE channel SET channel_status = 'archived', archive_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'active' RETURNING holder_id"
@@ -135,6 +136,22 @@ class RegistryIO:
         """
 
         return [_decode(row) for row in self._database.connect().execute(_HOLDER_SELECT, (workspace_id, holder_id))]
+
+    def scan(
+        self,
+        workspace_id: str
+    ) -> list[Channel]:
+
+        """Lists the times channels of a workspace that are not deleted.
+
+        Args:
+            workspace_id: Slack workspace ID.
+
+        Returns:
+            The channels in use or archived, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_CURRENT_SELECT, (workspace_id,))]
 
     def save(
         self,
