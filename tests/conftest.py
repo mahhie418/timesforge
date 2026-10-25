@@ -37,6 +37,7 @@ class Slack(slack_sdk.web.WebClient):
 
         match api_method:
 
+            case 'auth.test': data = {'ok': True, 'team_id': 'TXXX', 'user_id': self.identity}
             case 'users.list': data = {'ok': True, **page('members', self.workspace['users'], arguments)}
             case 'conversations.list': data = {'ok': True, **page('channels', [channel for channel in self.workspace['channels'] if ('private_channel' if channel['is_private'] else 'public_channel') in arguments['types'].split(',')], arguments)}
             case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'][arguments['channel']], arguments)}
@@ -50,15 +51,19 @@ class Slack(slack_sdk.web.WebClient):
         arguments: dict[str, typing.Any]
     ) -> slack_sdk.web.SlackResponse:
 
-        failures: list[str] = self.workspace['failures']
+        failures: list[str | int] = self.workspace['failures']
         failure = failures.pop(0) if failures else None
         channels: list[dict[str, typing.Any]] = self.workspace['channels']
 
-        if failure is not None: return respond(self, 'conversations.create', arguments, {'ok': False, 'error': failure})
+        if failure == 'dropped': raise TimeoutError('xxx')
+        if isinstance(failure, int): return respond(self, 'conversations.create', arguments, {'ok': False, 'error': 'fatal_error'}, failure)
+        if failure not in {None, 'lost'}: return respond(self, 'conversations.create', arguments, {'ok': False, 'error': failure})
         if any(channel['name'] == arguments['name'] for channel in channels): return respond(self, 'conversations.create', arguments, {'ok': False, 'error': 'name_taken'})
 
         channel = {'id': f'CXXX{len(channels) + 1}', 'name': arguments['name'], 'is_private': arguments['is_private'], 'is_archived': False, 'created': self.workspace['clock'], 'creator': self.identity}
         channels.append(channel)
+
+        if failure == 'lost': raise TimeoutError('xxx')
 
         return respond(self, 'conversations.create', arguments, {'ok': True, 'channel': channel})
 
@@ -107,7 +112,8 @@ def respond(
     client: slack_sdk.web.WebClient,
     api_method: str,
     arguments: dict[str, typing.Any],
-    data: dict[str, typing.Any]
+    data: dict[str, typing.Any],
+    status: int = 200
 ) -> slack_sdk.web.SlackResponse:
 
-    return slack_sdk.web.SlackResponse(client = client, http_verb = 'POST', api_url = api_method, req_args = {'params': arguments}, data = data, headers = {}, status_code = 200).validate()
+    return slack_sdk.web.SlackResponse(client = client, http_verb = 'POST', api_url = api_method, req_args = {'params': arguments}, data = data, headers = {}, status_code = status).validate()

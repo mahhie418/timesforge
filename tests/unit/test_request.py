@@ -157,8 +157,13 @@ def test_request_status_transition(
 
     request = store.reserve('TXXX', 'UXXX1', 'Xxx', CREATION)
 
+    assert not store.retry('TXXX', request.request_id, CHANGE)
+    assert not store.lose('TXXX', request.request_id, error = 'xxx', now = CHANGE)
     assert store.start('TXXX', request.request_id, CHANGE)
     assert not store.start('TXXX', request.request_id, CHANGE)
+    assert store.lose('TXXX', request.request_id, error = 'xxx', now = CHANGE)
+    assert not store.postpone('TXXX', request.request_id, CHANGE)
+    assert store.retry('TXXX', request.request_id, CHANGE)
     assert store.fail('TXXX', request.request_id, error = 'yyy', now = CHANGE)
     assert not store.fail('TXXX', request.request_id, error = 'yyy', now = CHANGE)
     assert store.load('TXXX', request.request_id) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'failed', grant_id = None, error = 'yyy', creation = CREATION)

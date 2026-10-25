@@ -13,6 +13,12 @@ def test_api_client_retry() -> None:
 
     assert {type(handler): handler.max_retry_count for handler in client.retry_handlers} == dict.fromkeys(HANDLERS, timesforge.slack.api.RETRY_LIMIT)
 
+def test_api_client_once() -> None:
+
+    client = timesforge.slack.api.connect('xoxp-xxx', idempotent = False)
+
+    assert {type(handler): handler.max_retry_count for handler in client.retry_handlers} == dict.fromkeys(HANDLERS[:1], timesforge.slack.api.RETRY_LIMIT)
+
 def test_api_users_pagination(
     workspace: dict[str, typing.Any],
     slack: slack_sdk.web.WebClient

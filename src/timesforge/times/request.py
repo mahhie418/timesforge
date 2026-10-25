@@ -11,17 +11,19 @@ import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.registry
 
-type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 'created', 'failed']
+type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 'reconciling', 'created', 'failed']
 
 _REQUEST_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_id = ?'
-_OPEN_SELECT = "SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution', 'creating')"
-_NAME_SELECT = "SELECT 1 FROM channel WHERE workspace_id = ? AND channel_name = ? AND channel_status != 'deleted' UNION ALL SELECT 1 FROM request WHERE workspace_id = ? AND channel_name = ? AND request_status IN ('reserved', 'creating')"
+_OPEN_SELECT = "SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution', 'creating', 'reconciling')"
+_NAME_SELECT = "SELECT 1 FROM channel WHERE workspace_id = ? AND channel_name = ? AND channel_status != 'deleted' UNION ALL SELECT 1 FROM request WHERE workspace_id = ? AND channel_name = ? AND request_status IN ('reserved', 'creating', 'reconciling')"
 _GRANT_RESERVE = "UPDATE recreation SET grant_status = 'reserved', reserve_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused' RETURNING grant_id"
 _REQUEST_INSERT = 'INSERT INTO request (workspace_id, user_id, first_name, channel_name, request_status, grant_id, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time'
 _REQUEST_START = "UPDATE request SET request_status = 'creating', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'reserved'"
+_REQUEST_RETRY = "UPDATE request SET request_status = 'creating', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'reconciling'"
+_REQUEST_LOSE = "UPDATE request SET request_status = 'reconciling', error_message = ?, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'creating'"
 _REQUEST_POSTPONE = "UPDATE request SET request_status = 'pending_name_resolution', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'creating'"
-_REQUEST_FAIL = "UPDATE request SET request_status = 'failed', error_message = ?, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'creating' RETURNING grant_id"
-_REQUEST_FINISH = "UPDATE request SET request_status = 'created', channel_id = ?, error_message = NULL, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'creating' RETURNING user_id, grant_id"
+_REQUEST_FAIL = "UPDATE request SET request_status = 'failed', error_message = ?, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status IN ('creating', 'reconciling') RETURNING grant_id"
+_REQUEST_FINISH = "UPDATE request SET request_status = 'created', channel_id = ?, error_message = NULL, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status IN ('creating', 'reconciling') RETURNING user_id, grant_id"
 _GRANT_RELEASE = "UPDATE recreation SET grant_status = 'unused', reserve_time = NULL WHERE grant_id = ? AND grant_status = 'reserved'"
 _GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE grant_id = ? AND grant_status = 'reserved'"
 
@@ -58,10 +60,10 @@ class Request:
         user_id: Slack user ID of the member who asked, who is to hold the channel.
         first_name: First name that the member entered.
         channel_name: Name of the channel, made from the first name.
-        status: reserved while the channel waits to be created, pending_name_resolution while another channel has its name, creating while Slack creates it, created once it exists, or failed when Slack refused to create it.
+        status: reserved while the channel waits to be created, pending_name_resolution while another channel has its name, creating while Slack creates it, reconciling while nobody knows whether Slack created it, created once it exists, or failed when Slack refused to create it.
         grant_id: ID of the recreation grant reserved for the channel, or None when the member uses their first right.
         channel_id: Slack channel ID of the channel, or None until it is created.
-        error: Why Slack refused to create the channel, or None.
+        error: Why the last attempt failed or was lost, or None.
         creation: When the member asked.
     """
 
@@ -184,6 +186,53 @@ class RequestIO:
 
         with self._database.begin() as connection: return connection.execute(_REQUEST_START, (now.isoformat(), workspace_id, request_id)).rowcount == 1
 
+    def retry(
+        self,
+        workspace_id: str,
+        request_id: int,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Marks a request whose result was unknown as being created again.
+
+        The caller must have made sure that Slack did not create the channel.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            request_id: ID of the request.
+            now: The current time.
+
+        Returns:
+            Whether the caller may create the channel now; False when the
+            result of the request is not unknown, such as when another caller
+            settled it.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_REQUEST_RETRY, (now.isoformat(), workspace_id, request_id)).rowcount == 1
+
+    def lose(
+        self,
+        workspace_id: str,
+        request_id: int,
+        *,
+        error: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Records that nobody knows whether Slack created the channel of a request.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            request_id: ID of the request.
+            error: What went wrong, such as a timeout.
+            now: The current time.
+
+        Returns:
+            Whether the request was being created.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_REQUEST_LOSE, (error, now.isoformat(), workspace_id, request_id)).rowcount == 1
+
     def postpone(
         self,
         workspace_id: str,
@@ -225,7 +274,7 @@ class RequestIO:
             now: The current time.
 
         Returns:
-            Whether the request was being created.
+            Whether the request was being created, or its result was unknown.
         """
 
         with self._database.begin() as connection:
@@ -260,7 +309,7 @@ class RequestIO:
             now: The current time.
 
         Returns:
-            Whether the request was being created.
+            Whether the request was being created, or its result was unknown.
 
         Raises:
             timesforge.times.registry.ChannelDuplicateError: The channel or its

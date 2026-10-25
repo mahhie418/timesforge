@@ -11,26 +11,31 @@ PAGE_SIZE = 200
 RETRY_LIMIT = 5
 
 def connect(
-    token: str
+    token: str,
+    *,
+    idempotent: bool = True
 ) -> slack_sdk.web.WebClient:
 
     """Creates a client that sends a request again after a rate limit, a server error or a lost connection.
 
     A request is sent up to `RETRY_LIMIT` more times. After a rate limit,
-    the client first waits as long as Slack asks.
+    the client first waits as long as Slack asks. A request that must not
+    take effect twice, such as one that creates a channel, needs a client
+    that is not idempotent: it sends a request again only after a rate
+    limit, before which Slack did nothing, because after a server error or a
+    lost connection the request may have taken effect.
 
     Args:
-        token: Slack bot token (xoxb-...).
+        token: Slack bot token (xoxb-...) or user token (xoxp-...).
+        idempotent: Whether the requests of the client may take effect twice.
 
     Returns:
         The client.
     """
 
-    handlers = [
-        slack_sdk.http_retry.builtin_handlers.RateLimitErrorRetryHandler(max_retry_count = RETRY_LIMIT),
-        slack_sdk.http_retry.builtin_handlers.ServerErrorRetryHandler(max_retry_count = RETRY_LIMIT),
-        slack_sdk.http_retry.builtin_handlers.ConnectionErrorRetryHandler(max_retry_count = RETRY_LIMIT)
-    ]
+    handlers: list[slack_sdk.http_retry.RetryHandler] = [slack_sdk.http_retry.builtin_handlers.RateLimitErrorRetryHandler(max_retry_count = RETRY_LIMIT)]
+
+    if idempotent: handlers += [slack_sdk.http_retry.builtin_handlers.ServerErrorRetryHandler(max_retry_count = RETRY_LIMIT), slack_sdk.http_retry.builtin_handlers.ConnectionErrorRetryHandler(max_retry_count = RETRY_LIMIT)]
 
     return slack_sdk.web.WebClient(token = token, retry_handlers = handlers)
 

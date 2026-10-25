@@ -14,6 +14,8 @@ import timesforge.times.request
 CREATION = datetime.datetime(2026, 10, 26, 15, 0, tzinfo = datetime.UTC)
 CHANGE = CREATION + datetime.timedelta(minutes = 1)
 
+FAILURES_RECOVERED = [['lost'], ['dropped'], [500]]
+
 @pytest.fixture
 def requests(
     database: timesforge.storage.Database
@@ -24,10 +26,11 @@ def requests(
 @pytest.fixture
 def creator(
     writer: slack_sdk.web.WebClient,
+    slack: slack_sdk.web.WebClient,
     requests: timesforge.times.request.RequestIO
 ) -> timesforge.slack.creation.Creator:
 
-    return timesforge.slack.creation.Creator(writer, requests, 'TXXX')
+    return timesforge.slack.creation.Creator(writer, slack, requests, 'TXXX')
 
 def reserve(
     requests: timesforge.times.request.RequestIO,
@@ -83,6 +86,43 @@ def test_creation_slack_refusal(
     assert (request.status, request.error) == ('failed', 'restricted_action')
     assert requests.reserve('TXXX', 'UXXX1', 'Yyy', CHANGE).request_id != request.request_id
 
+@pytest.mark.parametrize('failures', FAILURES_RECOVERED)
+def test_creation_result_recovery(
+    workspace: dict[str, typing.Any],
+    requests: timesforge.times.request.RequestIO,
+    creator: timesforge.slack.creation.Creator,
+    failures: list[str | int]
+) -> None:
+
+    workspace['failures'] = list(failures)
+
+    request = creator.create(reserve(requests), CHANGE)
+
+    assert request is not None
+    assert (request.status, request.channel_id, request.error) == ('created', 'CXXX3', None)
+    assert names(workspace) == ['times_xxx', 'xxx', 'times_yyy']
+
+def test_creation_result_unknown(
+    workspace: dict[str, typing.Any],
+    requests: timesforge.times.request.RequestIO,
+    creator: timesforge.slack.creation.Creator
+) -> None:
+
+    workspace['failures'] = ['dropped', 'dropped']
+
+    request = creator.create(request_id := reserve(requests), CHANGE)
+
+    assert request is not None
+    assert (request.status, request.error) == ('reconciling', 'xxx')
+    assert creator.create(request_id, CHANGE) == request
+    assert names(workspace) == ['times_xxx', 'xxx']
+
+    request = creator.reconcile(request_id, CHANGE)
+
+    assert request is not None
+    assert request.status == 'created'
+    assert names(workspace) == ['times_xxx', 'xxx', 'times_yyy']
+
 def test_creation_request_busy(
     workspace: dict[str, typing.Any],
     requests: timesforge.times.request.RequestIO,
@@ -95,6 +135,7 @@ def test_creation_request_busy(
 
     assert request is not None
     assert request.status == 'creating'
+    assert creator.reconcile(request_id, CHANGE) == request
     assert creator.create(request_id + 1, CHANGE) is None
     assert names(workspace) == ['times_xxx', 'xxx']
 

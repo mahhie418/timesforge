@@ -6,8 +6,13 @@ import typing
 import slack_sdk
 import slack_sdk.errors
 
+import timesforge.slack.api
 import timesforge.times.registry
 import timesforge.times.request
+
+STATUS_SERVER_MINIMUM = 500
+
+CREATION_MARGIN = datetime.timedelta(minutes = 1)
 
 class Creator:
 
@@ -15,12 +20,16 @@ class Creator:
 
     The member who asked holds the channel, whoever Slack records as its
     creator. When Slack has a channel with the name already, the request
-    waits for the owner; when Slack refuses, it fails.
+    waits for the owner; when Slack refuses, it fails. When nobody knows
+    whether Slack created the channel, because the connection broke or Slack
+    failed, the channel is looked for before it is created once more, so that
+    no request ever creates two channels.
     """
 
     def __init__(
         self,
         writer: slack_sdk.web.WebClient,
+        reader: slack_sdk.web.WebClient,
         store: timesforge.times.request.RequestIO,
         workspace_id: str
     ) -> None:
@@ -28,14 +37,17 @@ class Creator:
         """Initialises the creator.
 
         Args:
-            writer: Client that creates the channels: with the user token of
-                    an admin where only admins may create channels, or else
-                    with the bot token.
+            writer: Client that creates the channels and sends no request
+                    twice (see `timesforge.slack.api.connect`): with the user
+                    token of an admin where only admins may create channels,
+                    or else with the bot token.
+            reader: Client with the bot token, which reads the channels.
             store: Requests of the workspace.
             workspace_id: Slack workspace ID.
         """
 
         self._writer = writer
+        self._reader = reader
         self._store = store
         self._workspace_id = workspace_id
 
@@ -58,14 +70,43 @@ class Creator:
             The request afterwards, or None when it does not exist.
         """
 
-        if (request := self._store.load(self._workspace_id, request_id)) is not None and self._store.start(self._workspace_id, request_id, now): self._attempt(request, now)
+        if (request := self._store.load(self._workspace_id, request_id)) is not None and self._store.start(self._workspace_id, request_id, now): self._attempt(request, now, again = True)
+
+        return self._store.load(self._workspace_id, request_id)
+
+    def reconcile(
+        self,
+        request_id: int,
+        now: datetime.datetime
+    ) -> timesforge.times.request.Request | None:
+
+        """Settles a request whose result is unknown.
+
+        Slack is asked for a public channel with the name of the request that
+        the creating user made since the request. When there is one, it is
+        registered; otherwise the channel is created once more, now that it
+        is known not to exist.
+
+        Args:
+            request_id: ID of the request.
+            now: The current time.
+
+        Returns:
+            The request afterwards, or None when it does not exist.
+        """
+
+        if (request := self._store.load(self._workspace_id, request_id)) is None or request.status != 'reconciling': return request
+        if (channel := self._find(request)) is not None: self._finish(request, channel, now); return self._store.load(self._workspace_id, request_id)
+        if self._store.retry(self._workspace_id, request_id, now): self._attempt(request, now, again = False)
 
         return self._store.load(self._workspace_id, request_id)
 
     def _attempt(
         self,
         request: timesforge.times.request.Request,
-        now: datetime.datetime
+        now: datetime.datetime,
+        *,
+        again: bool
     ) -> None:
 
         try:
@@ -78,12 +119,42 @@ class Creator:
 
             match response.get('error'):
 
+                case _ if response.status_code >= STATUS_SERVER_MINIMUM: self._lose(request, f'Slack answered {response.status_code}', now, again = again)
                 case 'name_taken': self._store.postpone(self._workspace_id, request.request_id, now)
                 case code: self._store.fail(self._workspace_id, request.request_id, error = str(code), now = now)
 
             return
 
+        except OSError as error:
+
+            self._lose(request, str(error) or type(error).__name__, now, again = again)
+
+            return
+
         self._finish(request, channel, now)
+
+    def _lose(
+        self,
+        request: timesforge.times.request.Request,
+        error: str,
+        now: datetime.datetime,
+        *,
+        again: bool
+    ) -> None:
+
+        self._store.lose(self._workspace_id, request.request_id, error = error, now = now)
+
+        if again: self.reconcile(request.request_id, now)
+
+    def _find(
+        self,
+        request: timesforge.times.request.Request
+    ) -> dict[str, typing.Any] | None:
+
+        creator = self._writer.auth_test().get('user_id')
+        earliest = (request.creation - CREATION_MARGIN).timestamp()
+
+        return next((channel for channel in timesforge.slack.api.channels(self._reader) if channel['name'] == request.channel_name and channel.get('creator') == creator and channel['created'] >= earliest), None)
 
     def _finish(
         self,
