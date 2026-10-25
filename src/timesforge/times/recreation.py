@@ -6,6 +6,7 @@ import sqlite3
 import typing
 
 import timesforge.storage
+import timesforge.times.history
 import timesforge.times.policy
 
 type Status = typing.Literal['unused', 'reserved', 'consumed', 'revoked']
@@ -74,7 +75,8 @@ class RecreationIO:
     """Reads and writes the recreation grants of each workspace.
 
     A grant lets a member whose times channel was deleted create one more.
-    Each member has at most one grant that is unused or reserved.
+    Each member has at most one grant that is unused or reserved. Giving and
+    revoking grants go into the history.
     """
 
     def __init__(
@@ -140,13 +142,20 @@ class RecreationIO:
                 case 'excluded': raise GrantInvalidError('excluded', f'{user_id} is excluded from creating times channels')
                 case 'holder': raise GrantInvalidError('holder', f'{user_id} holds a times channel that is not deleted')
                 case _ if connection.execute(_OPEN_SELECT, (workspace_id, user_id)).fetchone() is not None: raise GrantInvalidError('grant', f'{user_id} has a recreation grant that is not used up')
-                case 'used': return _decode(connection.execute(_GRANT_INSERT, (workspace_id, user_id, owner_id, now.isoformat())).fetchone())
                 case None: raise GrantInvalidError('right', f'{user_id} has not created a times channel yet')
+                case 'used':
+
+                    grant = _decode(connection.execute(_GRANT_INSERT, (workspace_id, user_id, owner_id, now.isoformat())).fetchone())
+                    timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'grant', actor_id = owner_id, target_id = user_id, details = {'grant_id': str(grant.grant_id)}, creation = now))
+
+                    return grant
 
     def revoke(
         self,
         workspace_id: str,
         user_id: str,
+        *,
+        owner_id: str,
         now: datetime.datetime
     ) -> bool:
 
@@ -155,13 +164,20 @@ class RecreationIO:
         Args:
             workspace_id: Slack workspace ID.
             user_id: Slack user ID of the member.
+            owner_id: Slack user ID of the owner.
             now: The current time.
 
         Returns:
             Whether the member had an unused grant.
         """
 
-        with self._database.begin() as connection: return connection.execute(_GRANT_REVOKE, (now.isoformat(), workspace_id, user_id)).rowcount == 1
+        with self._database.begin() as connection:
+
+            if connection.execute(_GRANT_REVOKE, (now.isoformat(), workspace_id, user_id)).rowcount != 1: return False
+
+            timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'revoke', actor_id = owner_id, target_id = user_id, creation = now))
+
+            return True
 
     def consume(
         self,

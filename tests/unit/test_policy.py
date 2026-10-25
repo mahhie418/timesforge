@@ -69,7 +69,7 @@ def test_policy_member_excluded(
     assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX2') == 'excluded'
     assert timesforge.times.policy.decide(database.connect(), 'TYYY', 'UXXX1') is None
 
-    store.remove('TXXX', 'UXXX1')
+    store.remove('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
 
     assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX1') is None
 

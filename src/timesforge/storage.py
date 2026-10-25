@@ -83,6 +83,20 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         'DROP INDEX recreation_unused',
         "CREATE UNIQUE INDEX recreation_open ON recreation (workspace_id, user_id) WHERE grant_status IN ('unused', 'reserved')"
     ),
+    (
+        """
+        CREATE TABLE history (
+            entry_id INTEGER PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            actor_id TEXT,
+            target_id TEXT,
+            channel_id TEXT,
+            history_action TEXT NOT NULL,
+            detail_data TEXT NOT NULL,
+            create_time TEXT NOT NULL
+        ) STRICT
+        """,
+    ),
 )
 
 class DatabaseError(Exception):

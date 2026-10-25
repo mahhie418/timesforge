@@ -5,6 +5,7 @@ import datetime
 import sqlite3
 
 import timesforge.storage
+import timesforge.times.history
 
 _EXCLUSION_SELECT = 'SELECT user_id, exclusion_reason, create_user, create_time FROM exclusion WHERE workspace_id = ? AND user_id = ?'
 _WORKSPACE_SELECT = 'SELECT user_id, exclusion_reason, create_user, create_time FROM exclusion WHERE workspace_id = ? ORDER BY create_time'
@@ -33,6 +34,7 @@ class ExclusionIO:
     """Reads and writes the members excluded from creating times channels in each workspace.
 
     Excluding a member leaves their times channel, if they have one, as it is.
+    Each exclusion and its removal go into the history.
     """
 
     def __init__(
@@ -100,12 +102,21 @@ class ExclusionIO:
             Whether the member was excluded now, rather than already.
         """
 
-        with self._database.begin() as connection: return connection.execute(_EXCLUSION_INSERT, (workspace_id, exclusion.user_id, exclusion.reason, exclusion.owner_id, exclusion.creation.isoformat())).rowcount == 1
+        with self._database.begin() as connection:
+
+            if connection.execute(_EXCLUSION_INSERT, (workspace_id, exclusion.user_id, exclusion.reason, exclusion.owner_id, exclusion.creation.isoformat())).rowcount != 1: return False
+
+            timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'exclude', actor_id = exclusion.owner_id, target_id = exclusion.user_id, details = {'reason': exclusion.reason}, creation = exclusion.creation))
+
+            return True
 
     def remove(
         self,
         workspace_id: str,
-        user_id: str
+        user_id: str,
+        *,
+        owner_id: str,
+        now: datetime.datetime
     ) -> bool:
 
         """Lets an excluded member create times channels again.
@@ -113,12 +124,20 @@ class ExclusionIO:
         Args:
             workspace_id: Slack workspace ID.
             user_id: Slack user ID of the member.
+            owner_id: Slack user ID of the owner who removes the exclusion.
+            now: The current time.
 
         Returns:
             Whether the member was excluded until now.
         """
 
-        with self._database.begin() as connection: return connection.execute(_EXCLUSION_DELETE, (workspace_id, user_id)).rowcount == 1
+        with self._database.begin() as connection:
+
+            if connection.execute(_EXCLUSION_DELETE, (workspace_id, user_id)).rowcount != 1: return False
+
+            timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'include', actor_id = owner_id, target_id = user_id, creation = now))
+
+            return True
 
 def _decode(
     row: sqlite3.Row

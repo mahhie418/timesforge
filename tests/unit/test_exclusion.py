@@ -33,8 +33,8 @@ def test_exclusion_member_removal(
     store.add('TXXX', create('UXXX1'))
     store.add('TYYY', create('UXXX1'))
 
-    assert store.remove('TXXX', 'UXXX1')
-    assert not store.remove('TXXX', 'UXXX1')
+    assert store.remove('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
+    assert not store.remove('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
     assert store.load('TXXX', 'UXXX1') is None
     assert store.load('TYYY', 'UXXX1') is not None
 

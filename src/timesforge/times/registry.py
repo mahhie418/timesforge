@@ -6,16 +6,17 @@ import sqlite3
 import typing
 
 import timesforge.storage
+import timesforge.times.history
 
 type Status = typing.Literal['active', 'archived', 'deleted']
 
 _CHANNEL_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND channel_id = ?'
 _HOLDER_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND holder_id = ? ORDER BY create_time'
 _CHANNEL_INSERT = 'INSERT INTO channel (workspace_id, channel_id, holder_id, first_name, channel_name, channel_status, create_time, update_time, archive_time, delete_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-_CHANNEL_ARCHIVE = "UPDATE channel SET channel_status = 'archived', archive_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'active'"
-_CHANNEL_UNARCHIVE = "UPDATE channel SET channel_status = 'active', archive_time = NULL, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'archived'"
-_CHANNEL_RENAME = "UPDATE channel SET channel_name = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' AND channel_name != ?"
-_CHANNEL_DELETE = "UPDATE channel SET channel_status = 'deleted', delete_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted'"
+_CHANNEL_ARCHIVE = "UPDATE channel SET channel_status = 'archived', archive_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'active' RETURNING holder_id"
+_CHANNEL_UNARCHIVE = "UPDATE channel SET channel_status = 'active', archive_time = NULL, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'archived' RETURNING holder_id"
+_CHANNEL_RENAME = "UPDATE channel SET channel_name = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' AND channel_name != ? RETURNING holder_id"
+_CHANNEL_DELETE = "UPDATE channel SET channel_status = 'deleted', delete_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' RETURNING holder_id"
 
 class ChannelDuplicateError(Exception):
 
@@ -51,9 +52,10 @@ class RegistryIO:
     """Reads and writes the times channels of each workspace in the database.
 
     Archiving, restoring, renaming and deleting a channel in Slack change its
-    record but never its holder. A deleted channel stays deleted, so its
-    record keeps the history of the holder. Slack may send the same event
-    twice, so a change that a channel already has changes nothing.
+    record but never its holder, and each change goes into the history. A
+    deleted channel stays deleted, so its record keeps the history of the
+    holder. Slack may send the same event twice, so a change that a channel
+    already has changes nothing.
     """
 
     def __init__(
@@ -138,7 +140,9 @@ class RegistryIO:
         self,
         workspace_id: str,
         channel_id: str,
-        now: datetime.datetime
+        now: datetime.datetime,
+        *,
+        actor_id: str | None = None
     ) -> bool:
 
         """Marks a times channel in use as archived.
@@ -147,18 +151,21 @@ class RegistryIO:
             workspace_id: Slack workspace ID.
             channel_id: Slack channel ID.
             now: When the channel was archived.
+            actor_id: Slack user ID of the user who archived the channel, or None when Slack does not tell.
 
         Returns:
             Whether the channel changed.
         """
 
-        return self._update(_CHANNEL_ARCHIVE, (now.isoformat(), now.isoformat(), workspace_id, channel_id))
+        return self._update(_CHANNEL_ARCHIVE, (now.isoformat(), now.isoformat(), workspace_id, channel_id), workspace_id, timesforge.times.history.Entry(action = 'archive', actor_id = actor_id, channel_id = channel_id, creation = now))
 
     def unarchive(
         self,
         workspace_id: str,
         channel_id: str,
-        now: datetime.datetime
+        now: datetime.datetime,
+        *,
+        actor_id: str | None = None
     ) -> bool:
 
         """Marks an archived times channel as in use again.
@@ -167,19 +174,22 @@ class RegistryIO:
             workspace_id: Slack workspace ID.
             channel_id: Slack channel ID.
             now: When the channel was restored.
+            actor_id: Slack user ID of the user who restored the channel, or None when Slack does not tell.
 
         Returns:
             Whether the channel changed.
         """
 
-        return self._update(_CHANNEL_UNARCHIVE, (now.isoformat(), workspace_id, channel_id))
+        return self._update(_CHANNEL_UNARCHIVE, (now.isoformat(), workspace_id, channel_id), workspace_id, timesforge.times.history.Entry(action = 'unarchive', actor_id = actor_id, channel_id = channel_id, creation = now))
 
     def rename(
         self,
         workspace_id: str,
         channel_id: str,
         channel_name: str,
-        now: datetime.datetime
+        now: datetime.datetime,
+        *,
+        actor_id: str | None = None
     ) -> bool:
 
         """Records the new name of a times channel that is not deleted.
@@ -189,18 +199,21 @@ class RegistryIO:
             channel_id: Slack channel ID.
             channel_name: New name of the channel.
             now: When the channel was renamed.
+            actor_id: Slack user ID of the user who renamed the channel, or None when Slack does not tell.
 
         Returns:
             Whether the channel changed.
         """
 
-        return self._update(_CHANNEL_RENAME, (channel_name, now.isoformat(), workspace_id, channel_id, channel_name))
+        return self._update(_CHANNEL_RENAME, (channel_name, now.isoformat(), workspace_id, channel_id, channel_name), workspace_id, timesforge.times.history.Entry(action = 'rename', actor_id = actor_id, channel_id = channel_id, details = {'channel_name': channel_name}, creation = now))
 
     def delete(
         self,
         workspace_id: str,
         channel_id: str,
-        now: datetime.datetime
+        now: datetime.datetime,
+        *,
+        actor_id: str | None = None
     ) -> bool:
 
         """Marks a times channel as deleted, keeping its record.
@@ -209,20 +222,29 @@ class RegistryIO:
             workspace_id: Slack workspace ID.
             channel_id: Slack channel ID.
             now: When the channel was deleted.
+            actor_id: Slack user ID of the user who deleted the channel, or None when Slack does not tell.
 
         Returns:
             Whether the channel changed.
         """
 
-        return self._update(_CHANNEL_DELETE, (now.isoformat(), now.isoformat(), workspace_id, channel_id))
+        return self._update(_CHANNEL_DELETE, (now.isoformat(), now.isoformat(), workspace_id, channel_id), workspace_id, timesforge.times.history.Entry(action = 'delete', actor_id = actor_id, channel_id = channel_id, creation = now))
 
     def _update(
         self,
         statement: str,
-        parameters: tuple[str, ...]
+        parameters: tuple[str, ...],
+        workspace_id: str,
+        entry: timesforge.times.history.Entry
     ) -> bool:
 
-        with self._database.begin() as connection: return connection.execute(statement, parameters).rowcount == 1
+        with self._database.begin() as connection:
+
+            if (row := connection.execute(statement, parameters).fetchone()) is None: return False
+
+            timesforge.times.history.record(connection, workspace_id, dataclasses.replace(entry, target_id = row['holder_id']))
+
+            return True
 
 def _decode(
     row: sqlite3.Row

@@ -80,8 +80,8 @@ def test_recreation_grant_revocation(
     store = timesforge.times.recreation.RecreationIO(database)
     store.grant('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
 
-    assert store.revoke('TXXX', 'UXXX1', CHANGE)
-    assert not store.revoke('TXXX', 'UXXX1', CHANGE)
+    assert store.revoke('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CHANGE)
+    assert not store.revoke('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CHANGE)
     assert not store.consume('TXXX', 'UXXX1', 'CXXX2', CHANGE)
     assert [(grant.status, grant.revocation) for grant in store.find('TXXX', 'UXXX1')] == [('revoked', CHANGE)]
     assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX1') == 'used'
