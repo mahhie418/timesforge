@@ -17,6 +17,10 @@ _CHANNEL_UNARCHIVE = "UPDATE channel SET channel_status = 'active', archive_time
 _CHANNEL_RENAME = "UPDATE channel SET channel_name = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' AND channel_name != ?"
 _CHANNEL_DELETE = "UPDATE channel SET channel_status = 'deleted', delete_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted'"
 
+class ChannelDuplicateError(Exception):
+
+    """Raised when a times channel is registered twice, or for a member who holds one that is not deleted."""
+
 @dataclasses.dataclass(frozen = True, slots = True, kw_only = True)
 class Channel:
 
@@ -114,11 +118,21 @@ class RegistryIO:
         Args:
             workspace_id: Slack workspace ID.
             channel: The channel.
+
+        Raises:
+            ChannelDuplicateError: The channel is registered already, or its
+                                   holder holds a times channel that is not deleted.
         """
 
         times = [None if moment is None else moment.isoformat() for moment in (channel.creation, channel.archival, channel.deletion)]
 
-        with self._database.begin() as connection: connection.execute(_CHANNEL_INSERT, (workspace_id, channel.channel_id, channel.holder_id, channel.first_name, channel.channel_name, channel.status, times[0], times[0], times[1], times[2]))
+        try:
+
+            with self._database.begin() as connection: connection.execute(_CHANNEL_INSERT, (workspace_id, channel.channel_id, channel.holder_id, channel.first_name, channel.channel_name, channel.status, times[0], times[0], times[1], times[2]))
+
+        except sqlite3.IntegrityError:
+
+            raise ChannelDuplicateError(f'{channel.channel_id} is registered already, or {channel.holder_id} holds a times channel') from None
 
     def archive(
         self,

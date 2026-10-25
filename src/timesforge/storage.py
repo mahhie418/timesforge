@@ -32,6 +32,9 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         'ALTER TABLE channel ADD COLUMN archive_time TEXT',
         'ALTER TABLE channel ADD COLUMN delete_time TEXT'
     ),
+    (
+        "CREATE UNIQUE INDEX channel_holder ON channel (workspace_id, holder_id) WHERE channel_status != 'deleted'",
+    ),
 )
 
 class DatabaseError(Exception):

@@ -1,6 +1,8 @@
 import dataclasses
 import datetime
 
+import pytest
+
 import timesforge.storage
 import timesforge.times.registry
 
@@ -43,13 +45,16 @@ def test_registry_holder_channel(
 ) -> None:
 
     store = timesforge.times.registry.RegistryIO(database)
-    channels = [create('CXXX2', 'UXXX1', CHANGE), create('CXXX1', 'UXXX1')]
+    channel = create('CXXX2', 'UXXX1', CHANGE)
 
-    for channel in [*channels, create('CXXX3', 'UXXX2')]: store.save('TXXX', channel)
+    store.save('TXXX', channel)
+    store.delete('TXXX', 'CXXX2', CHANGE)
+
+    for channel in [create('CXXX1', 'UXXX1'), create('CXXX3', 'UXXX2')]: store.save('TXXX', channel)
 
     store.save('TYYY', create('CXXX4', 'UXXX1'))
 
-    assert store.find('TXXX', 'UXXX1') == channels[::-1]
+    assert [channel.channel_id for channel in store.find('TXXX', 'UXXX1')] == ['CXXX1', 'CXXX2']
     assert store.find('TXXX', 'UXXX3') == []
 
 def test_registry_lifecycle_archival(
@@ -124,3 +129,25 @@ def test_registry_lifecycle_unknown(
     assert not store.rename('TYYY', 'CXXX1', 'xxx', CHANGE)
     assert not store.delete('TYYY', 'CXXX1', CHANGE)
     assert store.load('TXXX', 'CXXX1') == create('CXXX1', 'UXXX1')
+
+def test_registry_holder_duplicated(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.registry.RegistryIO(database)
+    channel = create('CXXX1', 'UXXX1')
+
+    store.save('TXXX', channel)
+
+    with pytest.raises(timesforge.times.registry.ChannelDuplicateError): store.save('TXXX', create('CXXX2', 'UXXX1'))
+    with pytest.raises(timesforge.times.registry.ChannelDuplicateError): store.save('TXXX', create('CXXX1', 'UXXX2'))
+
+    store.archive('TXXX', 'CXXX1', CHANGE)
+
+    with pytest.raises(timesforge.times.registry.ChannelDuplicateError): store.save('TXXX', create('CXXX2', 'UXXX1'))
+
+    store.delete('TXXX', 'CXXX1', CHANGE)
+    store.save('TXXX', create('CXXX2', 'UXXX1', CHANGE))
+    store.save('TYYY', create('CXXX3', 'UXXX1'))
+
+    assert [channel.channel_id for channel in store.find('TXXX', 'UXXX1')] == ['CXXX1', 'CXXX2']
