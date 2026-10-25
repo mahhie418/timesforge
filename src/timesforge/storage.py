@@ -97,6 +97,24 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         ) STRICT
         """,
     ),
+    (
+        """
+        CREATE TABLE onboarding (
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            event_id TEXT NOT NULL,
+            message_status TEXT NOT NULL,
+            conversation_id TEXT,
+            message_ts TEXT,
+            error_message TEXT,
+            create_time TEXT NOT NULL,
+            send_time TEXT,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, user_id)
+        ) STRICT
+        """,
+    ),
 )
 
 class DatabaseError(Exception):
