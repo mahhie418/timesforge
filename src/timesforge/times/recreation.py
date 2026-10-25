@@ -8,21 +8,21 @@ import typing
 import timesforge.storage
 import timesforge.times.policy
 
-type Status = typing.Literal['unused', 'consumed', 'revoked']
+type Status = typing.Literal['unused', 'reserved', 'consumed', 'revoked']
 type Reason = typing.Literal['excluded', 'holder', 'grant', 'right']
 
-_GRANT_SELECT = 'SELECT grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, consume_time, channel_id FROM recreation WHERE workspace_id = ? AND user_id = ? ORDER BY grant_id'
-_UNUSED_SELECT = "SELECT 1 FROM recreation WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
-_GRANT_INSERT = "INSERT INTO recreation (workspace_id, user_id, grant_status, grant_user, grant_time) VALUES (?, ?, 'unused', ?, ?) RETURNING grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, consume_time, channel_id"
+_GRANT_SELECT = 'SELECT grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, reserve_time, consume_time, channel_id FROM recreation WHERE workspace_id = ? AND user_id = ? ORDER BY grant_id'
+_OPEN_SELECT = "SELECT 1 FROM recreation WHERE workspace_id = ? AND user_id = ? AND grant_status IN ('unused', 'reserved')"
+_GRANT_INSERT = "INSERT INTO recreation (workspace_id, user_id, grant_status, grant_user, grant_time) VALUES (?, ?, 'unused', ?, ?) RETURNING grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, reserve_time, consume_time, channel_id"
 _GRANT_REVOKE = "UPDATE recreation SET grant_status = 'revoked', revoke_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
-_GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
+_GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE workspace_id = ? AND user_id = ? AND grant_status IN ('unused', 'reserved')"
 
 class GrantInvalidError(ValueError):
 
     """Raised when the owner cannot give a member a recreation grant.
 
     Attributes:
-        reason: Why not: excluded when the owner excluded the member, holder when they hold a times channel that is not deleted, grant when they have an unused grant already, or right when they have not used their first right yet.
+        reason: Why not: excluded when the owner excluded the member, holder when they hold a times channel that is not deleted, grant when they have a grant that is not used up yet, or right when they have not used their first right yet.
     """
 
     def __init__(
@@ -50,10 +50,11 @@ class Grant:
     Attributes:
         grant_id: ID of the grant.
         user_id: Slack user ID of the member.
-        status: Whether the grant is unused, consumed by a new times channel, or revoked by the owner.
+        status: Whether the grant is unused, reserved by a request for a times channel, consumed by the new channel, or revoked by the owner.
         owner_id: Slack user ID of the owner who gave the grant.
         granting: When the owner gave the grant.
         revocation: When the owner revoked the grant, or None while it is not revoked.
+        reservation: When a request reserved the grant, or None while it is not reserved.
         consumption: When the member used the grant, or None while it is not used.
         channel_id: Slack channel ID of the times channel created with the grant, or None while it is not used.
     """
@@ -64,6 +65,7 @@ class Grant:
     owner_id: str
     granting: datetime.datetime
     revocation: datetime.datetime | None = None
+    reservation: datetime.datetime | None = None
     consumption: datetime.datetime | None = None
     channel_id: str | None = None
 
@@ -72,7 +74,7 @@ class RecreationIO:
     """Reads and writes the recreation grants of each workspace.
 
     A grant lets a member whose times channel was deleted create one more.
-    Each member has at most one unused grant.
+    Each member has at most one grant that is unused or reserved.
     """
 
     def __init__(
@@ -137,7 +139,7 @@ class RecreationIO:
 
                 case 'excluded': raise GrantInvalidError('excluded', f'{user_id} is excluded from creating times channels')
                 case 'holder': raise GrantInvalidError('holder', f'{user_id} holds a times channel that is not deleted')
-                case _ if connection.execute(_UNUSED_SELECT, (workspace_id, user_id)).fetchone() is not None: raise GrantInvalidError('grant', f'{user_id} has an unused recreation grant')
+                case _ if connection.execute(_OPEN_SELECT, (workspace_id, user_id)).fetchone() is not None: raise GrantInvalidError('grant', f'{user_id} has a recreation grant that is not used up')
                 case 'used': return _decode(connection.execute(_GRANT_INSERT, (workspace_id, user_id, owner_id, now.isoformat())).fetchone())
                 case None: raise GrantInvalidError('right', f'{user_id} has not created a times channel yet')
 
@@ -169,7 +171,7 @@ class RecreationIO:
         now: datetime.datetime
     ) -> bool:
 
-        """Uses the unused recreation grant of a member for a new times channel.
+        """Uses the unused or reserved recreation grant of a member for a new times channel.
 
         Args:
             workspace_id: Slack workspace ID.
@@ -178,7 +180,7 @@ class RecreationIO:
             now: When the channel was created.
 
         Returns:
-            Whether the member had an unused grant.
+            Whether the member had an unused or reserved grant.
         """
 
         with self._database.begin() as connection: return connection.execute(_GRANT_CONSUME, (now.isoformat(), channel_id, workspace_id, user_id)).rowcount == 1
@@ -187,6 +189,6 @@ def _decode(
     row: sqlite3.Row
 ) -> Grant:
 
-    revocation, consumption = (None if row[name] is None else datetime.datetime.fromisoformat(row[name]) for name in ('revoke_time', 'consume_time'))
+    revocation, reservation, consumption = (None if row[name] is None else datetime.datetime.fromisoformat(row[name]) for name in ('revoke_time', 'reserve_time', 'consume_time'))
 
-    return Grant(grant_id = row['grant_id'], user_id = row['user_id'], status = row['grant_status'], owner_id = row['grant_user'], granting = datetime.datetime.fromisoformat(row['grant_time']), revocation = revocation, consumption = consumption, channel_id = row['channel_id'])
+    return Grant(grant_id = row['grant_id'], user_id = row['user_id'], status = row['grant_status'], owner_id = row['grant_user'], granting = datetime.datetime.fromisoformat(row['grant_time']), revocation = revocation, reservation = reservation, consumption = consumption, channel_id = row['channel_id'])

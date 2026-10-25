@@ -63,6 +63,26 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         """,
         "CREATE UNIQUE INDEX recreation_unused ON recreation (workspace_id, user_id) WHERE grant_status = 'unused'"
     ),
+    (
+        """
+        CREATE TABLE request (
+            request_id INTEGER PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            first_name TEXT NOT NULL,
+            channel_name TEXT NOT NULL,
+            request_status TEXT NOT NULL,
+            grant_id INTEGER,
+            create_time TEXT NOT NULL,
+            update_time TEXT NOT NULL
+        ) STRICT
+        """,
+        "CREATE UNIQUE INDEX request_user ON request (workspace_id, user_id) WHERE request_status IN ('reserved', 'pending_name_resolution')",
+        "CREATE UNIQUE INDEX request_name ON request (workspace_id, channel_name) WHERE request_status = 'reserved'",
+        'ALTER TABLE recreation ADD COLUMN reserve_time TEXT',
+        'DROP INDEX recreation_unused',
+        "CREATE UNIQUE INDEX recreation_open ON recreation (workspace_id, user_id) WHERE grant_status IN ('unused', 'reserved')"
+    ),
 )
 
 class DatabaseError(Exception):
