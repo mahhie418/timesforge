@@ -27,6 +27,11 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         ) STRICT
         """,
     ),
+    (
+        "ALTER TABLE channel ADD COLUMN channel_status TEXT NOT NULL DEFAULT 'active'",
+        'ALTER TABLE channel ADD COLUMN archive_time TEXT',
+        'ALTER TABLE channel ADD COLUMN delete_time TEXT'
+    ),
 )
 
 class DatabaseError(Exception):
