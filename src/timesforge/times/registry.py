@@ -1,4 +1,4 @@
-"""Times channels that timesforge created, with the members who hold them."""
+"""Times channels that timesforge knows, with the members who hold them."""
 
 import dataclasses
 import datetime
@@ -8,11 +8,12 @@ import typing
 import timesforge.storage
 import timesforge.times.history
 
+type Source = typing.Literal['created', 'imported']
 type Status = typing.Literal['active', 'archived', 'deleted']
 
-_CHANNEL_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND channel_id = ?'
-_HOLDER_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND holder_id = ? ORDER BY create_time'
-_CHANNEL_INSERT = 'INSERT INTO channel (workspace_id, channel_id, holder_id, first_name, channel_name, channel_status, create_time, update_time, archive_time, delete_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+_CHANNEL_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND channel_id = ?'
+_HOLDER_SELECT = 'SELECT channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, archive_time, delete_time FROM channel WHERE workspace_id = ? AND holder_id = ? ORDER BY create_time'
+_CHANNEL_INSERT = 'INSERT INTO channel (workspace_id, channel_id, holder_id, first_name, channel_name, channel_source, channel_status, create_time, update_time, archive_time, delete_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 _CHANNEL_ARCHIVE = "UPDATE channel SET channel_status = 'archived', archive_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'active' RETURNING holder_id"
 _CHANNEL_UNARCHIVE = "UPDATE channel SET channel_status = 'active', archive_time = NULL, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'archived' RETURNING holder_id"
 _CHANNEL_RENAME = "UPDATE channel SET channel_name = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' AND channel_name != ? RETURNING holder_id"
@@ -32,6 +33,7 @@ class Channel:
         holder_id: Slack user ID of the member who holds the channel: the member who asked for it, whoever Slack records as its creator.
         first_name: First name that the holder entered.
         channel_name: Name of the channel, which follows renames in Slack.
+        source: Whether timesforge created the channel, or imported one that the holder had created by hand.
         status: Whether the channel is in use (active), archived, or deleted in Slack.
         creation: When the channel was created.
         archival: When the channel was archived, or None while it is not archived.
@@ -42,6 +44,7 @@ class Channel:
     holder_id: str
     first_name: str
     channel_name: str
+    source: Source = 'created'
     status: Status = 'active'
     creation: datetime.datetime
     archival: datetime.datetime | None = None
@@ -68,7 +71,7 @@ def insert(
 
     times = [None if moment is None else moment.isoformat() for moment in (channel.creation, channel.archival, channel.deletion)]
 
-    try: connection.execute(_CHANNEL_INSERT, (workspace_id, channel.channel_id, channel.holder_id, channel.first_name, channel.channel_name, channel.status, times[0], times[0], times[1], times[2]))
+    try: connection.execute(_CHANNEL_INSERT, (workspace_id, channel.channel_id, channel.holder_id, channel.first_name, channel.channel_name, channel.source, channel.status, times[0], times[0], times[1], times[2]))
     except sqlite3.IntegrityError: raise ChannelDuplicateError(f'{channel.channel_id} is registered already, or {channel.holder_id} holds a times channel') from None
 
 class RegistryIO:
@@ -268,4 +271,4 @@ def _decode(
 
     archival, deletion = (None if row[name] is None else datetime.datetime.fromisoformat(row[name]) for name in ('archive_time', 'delete_time'))
 
-    return Channel(channel_id = row['channel_id'], holder_id = row['holder_id'], first_name = row['first_name'], channel_name = row['channel_name'], status = row['channel_status'], creation = datetime.datetime.fromisoformat(row['create_time']), archival = archival, deletion = deletion)
+    return Channel(channel_id = row['channel_id'], holder_id = row['holder_id'], first_name = row['first_name'], channel_name = row['channel_name'], source = row['channel_source'], status = row['channel_status'], creation = datetime.datetime.fromisoformat(row['create_time']), archival = archival, deletion = deletion)

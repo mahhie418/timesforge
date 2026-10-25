@@ -143,6 +143,9 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         ) STRICT
         """,
     ),
+    (
+        "ALTER TABLE channel ADD COLUMN channel_source TEXT NOT NULL DEFAULT 'created'",
+    ),
 )
 
 class DatabaseError(Exception):

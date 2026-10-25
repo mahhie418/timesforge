@@ -39,6 +39,8 @@ class Slack(slack_sdk.web.WebClient):
 
             case 'auth.test': data = {'ok': True, 'team_id': 'TXXX', 'user_id': self.identity}
             case 'users.list': data = {'ok': True, **page('members', self.workspace['users'], arguments)}
+            case 'users.info': data = next(({'ok': True, 'user': user} for user in self.workspace['users'] if user['id'] == arguments['user']), {'ok': False, 'error': 'user_not_found'})
+            case 'conversations.info': data = next(({'ok': True, 'channel': channel} for channel in self.workspace['channels'] if channel['id'] == arguments['channel']), {'ok': False, 'error': 'channel_not_found'})
             case 'conversations.list': data = {'ok': True, **page('channels', [channel for channel in self.workspace['channels'] if ('private_channel' if channel['is_private'] else 'public_channel') in arguments['types'].split(',')], arguments)}
             case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'].get(arguments['channel'], []), arguments)}
             case 'conversations.create': return self.create(arguments)
