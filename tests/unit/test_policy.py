@@ -1,6 +1,7 @@
 import datetime
 
 import timesforge.storage
+import timesforge.times.exclusion
 import timesforge.times.policy
 import timesforge.times.registry
 
@@ -51,3 +52,22 @@ def test_policy_right_used(
     register(database, 'CXXX1', 'UXXX1').delete('TXXX', 'CXXX1', CREATION)
 
     assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX1') == 'used'
+
+def test_policy_member_excluded(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.exclusion.ExclusionIO(database)
+    channels = [timesforge.times.exclusion.Exclusion(user_id = 'UXXX1', reason = 'xxx', owner_id = 'UXXX0', creation = CREATION), timesforge.times.exclusion.Exclusion(user_id = 'UXXX2', reason = 'xxx', owner_id = 'UXXX0', creation = CREATION)]
+
+    for channel in channels: store.add('TXXX', channel)
+
+    register(database, 'CXXX1', 'UXXX2')
+
+    assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX1') == 'excluded'
+    assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX2') == 'excluded'
+    assert timesforge.times.policy.decide(database.connect(), 'TYYY', 'UXXX1') is None
+
+    store.remove('TXXX', 'UXXX1')
+
+    assert timesforge.times.policy.decide(database.connect(), 'TXXX', 'UXXX1') is None

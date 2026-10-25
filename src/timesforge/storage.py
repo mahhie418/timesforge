@@ -35,6 +35,18 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
     (
         "CREATE UNIQUE INDEX channel_holder ON channel (workspace_id, holder_id) WHERE channel_status != 'deleted'",
     ),
+    (
+        """
+        CREATE TABLE exclusion (
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            exclusion_reason TEXT NOT NULL,
+            create_user TEXT NOT NULL,
+            create_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, user_id)
+        ) STRICT
+        """,
+    ),
 )
 
 class DatabaseError(Exception):
