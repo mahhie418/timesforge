@@ -1,0 +1,192 @@
+"""Recreation grants, which the owner gives members whose times channels were deleted."""
+
+import dataclasses
+import datetime
+import sqlite3
+import typing
+
+import timesforge.storage
+import timesforge.times.policy
+
+type Status = typing.Literal['unused', 'consumed', 'revoked']
+type Reason = typing.Literal['excluded', 'holder', 'grant', 'right']
+
+_GRANT_SELECT = 'SELECT grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, consume_time, channel_id FROM recreation WHERE workspace_id = ? AND user_id = ? ORDER BY grant_id'
+_UNUSED_SELECT = "SELECT 1 FROM recreation WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
+_GRANT_INSERT = "INSERT INTO recreation (workspace_id, user_id, grant_status, grant_user, grant_time) VALUES (?, ?, 'unused', ?, ?) RETURNING grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, consume_time, channel_id"
+_GRANT_REVOKE = "UPDATE recreation SET grant_status = 'revoked', revoke_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
+_GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
+
+class GrantInvalidError(ValueError):
+
+    """Raised when the owner cannot give a member a recreation grant.
+
+    Attributes:
+        reason: Why not: excluded when the owner excluded the member, holder when they hold a times channel that is not deleted, grant when they have an unused grant already, or right when they have not used their first right yet.
+    """
+
+    def __init__(
+        self,
+        reason: Reason,
+        message: str
+    ) -> None:
+
+        """Initialises the error.
+
+        Args:
+            reason: Why the member cannot get a recreation grant.
+            message: Explanation for the owner.
+        """
+
+        super().__init__(message)
+
+        self.reason = reason
+
+@dataclasses.dataclass(frozen = True, slots = True, kw_only = True)
+class Grant:
+
+    """One recreation grant.
+
+    Attributes:
+        grant_id: ID of the grant.
+        user_id: Slack user ID of the member.
+        status: Whether the grant is unused, consumed by a new times channel, or revoked by the owner.
+        owner_id: Slack user ID of the owner who gave the grant.
+        granting: When the owner gave the grant.
+        revocation: When the owner revoked the grant, or None while it is not revoked.
+        consumption: When the member used the grant, or None while it is not used.
+        channel_id: Slack channel ID of the times channel created with the grant, or None while it is not used.
+    """
+
+    grant_id: int
+    user_id: str
+    status: Status
+    owner_id: str
+    granting: datetime.datetime
+    revocation: datetime.datetime | None = None
+    consumption: datetime.datetime | None = None
+    channel_id: str | None = None
+
+class RecreationIO:
+
+    """Reads and writes the recreation grants of each workspace.
+
+    A grant lets a member whose times channel was deleted create one more.
+    Each member has at most one unused grant.
+    """
+
+    def __init__(
+        self,
+        database: timesforge.storage.Database
+    ) -> None:
+
+        """Initialises the store.
+
+        Args:
+            database: The database that holds the grants.
+        """
+
+        self._database = database
+
+    def find(
+        self,
+        workspace_id: str,
+        user_id: str
+    ) -> list[Grant]:
+
+        """Finds the recreation grants of a member.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+
+        Returns:
+            The grants, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_GRANT_SELECT, (workspace_id, user_id))]
+
+    def grant(
+        self,
+        workspace_id: str,
+        user_id: str,
+        *,
+        owner_id: str,
+        now: datetime.datetime
+    ) -> Grant:
+
+        """Gives a member a recreation grant.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+            owner_id: Slack user ID of the owner.
+            now: The current time.
+
+        Returns:
+            The new grant.
+
+        Raises:
+            GrantInvalidError: The member may create a times channel already,
+                               or may not get a grant.
+        """
+
+        with self._database.begin() as connection:
+
+            match timesforge.times.policy.decide(connection, workspace_id, user_id):
+
+                case 'excluded': raise GrantInvalidError('excluded', f'{user_id} is excluded from creating times channels')
+                case 'holder': raise GrantInvalidError('holder', f'{user_id} holds a times channel that is not deleted')
+                case _ if connection.execute(_UNUSED_SELECT, (workspace_id, user_id)).fetchone() is not None: raise GrantInvalidError('grant', f'{user_id} has an unused recreation grant')
+                case 'used': return _decode(connection.execute(_GRANT_INSERT, (workspace_id, user_id, owner_id, now.isoformat())).fetchone())
+                case None: raise GrantInvalidError('right', f'{user_id} has not created a times channel yet')
+
+    def revoke(
+        self,
+        workspace_id: str,
+        user_id: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Revokes the unused recreation grant of a member.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+            now: The current time.
+
+        Returns:
+            Whether the member had an unused grant.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_GRANT_REVOKE, (now.isoformat(), workspace_id, user_id)).rowcount == 1
+
+    def consume(
+        self,
+        workspace_id: str,
+        user_id: str,
+        channel_id: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Uses the unused recreation grant of a member for a new times channel.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+            channel_id: Slack channel ID of the new times channel.
+            now: When the channel was created.
+
+        Returns:
+            Whether the member had an unused grant.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_GRANT_CONSUME, (now.isoformat(), channel_id, workspace_id, user_id)).rowcount == 1
+
+def _decode(
+    row: sqlite3.Row
+) -> Grant:
+
+    revocation, consumption = (None if row[name] is None else datetime.datetime.fromisoformat(row[name]) for name in ('revoke_time', 'consume_time'))
+
+    return Grant(grant_id = row['grant_id'], user_id = row['user_id'], status = row['grant_status'], owner_id = row['grant_user'], granting = datetime.datetime.fromisoformat(row['grant_time']), revocation = revocation, consumption = consumption, channel_id = row['channel_id'])

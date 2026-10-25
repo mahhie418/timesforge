@@ -47,6 +47,22 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         ) STRICT
         """,
     ),
+    (
+        """
+        CREATE TABLE recreation (
+            grant_id INTEGER PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            grant_status TEXT NOT NULL,
+            grant_user TEXT NOT NULL,
+            grant_time TEXT NOT NULL,
+            revoke_time TEXT,
+            consume_time TEXT,
+            channel_id TEXT
+        ) STRICT
+        """,
+        "CREATE UNIQUE INDEX recreation_unused ON recreation (workspace_id, user_id) WHERE grant_status = 'unused'"
+    ),
 )
 
 class DatabaseError(Exception):
