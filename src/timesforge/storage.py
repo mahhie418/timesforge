@@ -12,7 +12,110 @@ import timesforge.product
 DATABASE_FILE = 'timesforge.sqlite3'
 TIMEOUT_LIMIT = 10.
 
-_MIGRATIONS: tuple[tuple[str, ...], ...] = ()
+_MIGRATIONS: tuple[tuple[str, ...], ...] = (
+    (
+        """
+        CREATE TABLE channel (
+            workspace_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            holder_id TEXT NOT NULL,
+            first_name TEXT NOT NULL,
+            channel_name TEXT NOT NULL,
+            create_time TEXT NOT NULL,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, channel_id)
+        ) STRICT
+        """,
+    ),
+    (
+        "ALTER TABLE channel ADD COLUMN channel_status TEXT NOT NULL DEFAULT 'active'",
+        'ALTER TABLE channel ADD COLUMN archive_time TEXT',
+        'ALTER TABLE channel ADD COLUMN delete_time TEXT'
+    ),
+    (
+        "CREATE UNIQUE INDEX channel_holder ON channel (workspace_id, holder_id) WHERE channel_status != 'deleted'",
+    ),
+    (
+        """
+        CREATE TABLE exclusion (
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            exclusion_reason TEXT NOT NULL,
+            create_user TEXT NOT NULL,
+            create_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, user_id)
+        ) STRICT
+        """,
+    ),
+    (
+        """
+        CREATE TABLE recreation (
+            grant_id INTEGER PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            grant_status TEXT NOT NULL,
+            grant_user TEXT NOT NULL,
+            grant_time TEXT NOT NULL,
+            revoke_time TEXT,
+            consume_time TEXT,
+            channel_id TEXT
+        ) STRICT
+        """,
+        "CREATE UNIQUE INDEX recreation_unused ON recreation (workspace_id, user_id) WHERE grant_status = 'unused'"
+    ),
+    (
+        """
+        CREATE TABLE request (
+            request_id INTEGER PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            first_name TEXT NOT NULL,
+            channel_name TEXT NOT NULL,
+            request_status TEXT NOT NULL,
+            grant_id INTEGER,
+            create_time TEXT NOT NULL,
+            update_time TEXT NOT NULL
+        ) STRICT
+        """,
+        "CREATE UNIQUE INDEX request_user ON request (workspace_id, user_id) WHERE request_status IN ('reserved', 'pending_name_resolution')",
+        "CREATE UNIQUE INDEX request_name ON request (workspace_id, channel_name) WHERE request_status = 'reserved'",
+        'ALTER TABLE recreation ADD COLUMN reserve_time TEXT',
+        'DROP INDEX recreation_unused',
+        "CREATE UNIQUE INDEX recreation_open ON recreation (workspace_id, user_id) WHERE grant_status IN ('unused', 'reserved')"
+    ),
+    (
+        """
+        CREATE TABLE history (
+            entry_id INTEGER PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            actor_id TEXT,
+            target_id TEXT,
+            channel_id TEXT,
+            history_action TEXT NOT NULL,
+            detail_data TEXT NOT NULL,
+            create_time TEXT NOT NULL
+        ) STRICT
+        """,
+    ),
+    (
+        """
+        CREATE TABLE onboarding (
+            workspace_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            event_id TEXT NOT NULL,
+            message_status TEXT NOT NULL,
+            conversation_id TEXT,
+            message_ts TEXT,
+            error_message TEXT,
+            create_time TEXT NOT NULL,
+            send_time TEXT,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, user_id)
+        ) STRICT
+        """,
+    ),
+)
 
 class DatabaseError(Exception):
 
