@@ -1,0 +1,5 @@
+[
+  {"id": "UXXX1", "team_id": "TXXX", "name": "xxx1", "deleted": false, "is_bot": false},
+  {"id": "UXXX2", "team_id": "TXXX", "name": "xxx2", "deleted": false, "is_bot": false},
+  {"id": "UXXX3", "team_id": "TXXX", "name": "xxx3", "deleted": false, "is_bot": false}
+]
