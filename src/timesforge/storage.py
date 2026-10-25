@@ -12,7 +12,22 @@ import timesforge.product
 DATABASE_FILE = 'timesforge.sqlite3'
 TIMEOUT_LIMIT = 10.
 
-_MIGRATIONS: tuple[tuple[str, ...], ...] = ()
+_MIGRATIONS: tuple[tuple[str, ...], ...] = (
+    (
+        """
+        CREATE TABLE channel (
+            workspace_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            holder_id TEXT NOT NULL,
+            first_name TEXT NOT NULL,
+            channel_name TEXT NOT NULL,
+            create_time TEXT NOT NULL,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, channel_id)
+        ) STRICT
+        """,
+    ),
+)
 
 class DatabaseError(Exception):
 
