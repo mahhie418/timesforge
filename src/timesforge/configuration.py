@@ -12,7 +12,7 @@ import platformdirs
 import timesforge.product
 
 type Language = typing.Literal['en', 'ja']
-type FieldRequired = typing.Literal['slack_bot_token', 'slack_app_token']
+type FieldRequired = typing.Literal['slack_bot_token', 'slack_app_token', 'slack_user_token']
 
 class ConfigurationError(Exception):
 
@@ -30,12 +30,14 @@ class Settings:
     Attributes:
         slack_bot_token: Slack bot token (xoxb-...).
         slack_app_token: Slack app-level token (xapp-...) for Socket Mode.
+        slack_user_token: Slack user token (xoxp-...) of an admin, which creates the times channels where only admins may create channels.
         timesforge_data_directory: Local directory for the data.
         timesforge_language_display: Language for users whose Slack locale is unknown.
     """
 
     slack_bot_token: str
     slack_app_token: str
+    slack_user_token: str
     timesforge_data_directory: pathlib.Path
     timesforge_language_display: Language
 
@@ -83,13 +85,16 @@ def load(
 
     slack_bot_token = _parse('SLACK_BOT_TOKEN', environment, category = 'environ')
     slack_app_token = _parse('SLACK_APP_TOKEN', environment, category = 'environ')
+    slack_user_token = _parse('SLACK_USER_TOKEN', environment, category = 'environ')
 
     if slack_bot_token and not slack_bot_token.startswith('xoxb-'): raise ConfigurationError('SLACK_BOT_TOKEN must be a bot token starting with xoxb-')
     if slack_app_token and not slack_app_token.startswith('xapp-'): raise ConfigurationError('SLACK_APP_TOKEN must be an app-level token starting with xapp-')
+    if slack_user_token and not slack_user_token.startswith('xoxp-'): raise ConfigurationError('SLACK_USER_TOKEN must be a user token starting with xoxp-')
 
     return Settings(
         slack_bot_token = slack_bot_token,
         slack_app_token = slack_app_token,
+        slack_user_token = slack_user_token,
         timesforge_data_directory = _parse('TIMESFORGE_DATA_DIRECTORY', environment, category = 'directory'),
         timesforge_language_display = _parse('TIMESFORGE_LANGUAGE_DISPLAY', environment, category = 'language')
     )

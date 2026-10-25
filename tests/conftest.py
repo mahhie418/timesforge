@@ -13,12 +13,14 @@ class Slack(slack_sdk.web.WebClient):
 
     def __init__(
         self,
-        workspace: dict[str, typing.Any]
+        workspace: dict[str, typing.Any],
+        identity: str = 'UXXXB'
     ) -> None:
 
         super().__init__()
 
         self.workspace = workspace
+        self.identity = identity
 
     @typing.override
     def api_call(
@@ -35,12 +37,30 @@ class Slack(slack_sdk.web.WebClient):
 
         match api_method:
 
-            case 'users.list': data = page('members', self.workspace['users'], arguments)
-            case 'conversations.list': data = page('channels', [channel for channel in self.workspace['channels'] if ('private_channel' if channel['is_private'] else 'public_channel') in arguments['types'].split(',')], arguments)
-            case 'conversations.members': data = page('members', self.workspace['members'][arguments['channel']], arguments)
+            case 'users.list': data = {'ok': True, **page('members', self.workspace['users'], arguments)}
+            case 'conversations.list': data = {'ok': True, **page('channels', [channel for channel in self.workspace['channels'] if ('private_channel' if channel['is_private'] else 'public_channel') in arguments['types'].split(',')], arguments)}
+            case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'][arguments['channel']], arguments)}
+            case 'conversations.create': return self.create(arguments)
             case _: raise NotImplementedError(api_method)
 
-        return slack_sdk.web.SlackResponse(client = self, http_verb = http_verb, api_url = api_method, req_args = {'params': arguments}, data = {'ok': True, **data}, headers = {}, status_code = 200).validate()
+        return respond(self, api_method, arguments, data)
+
+    def create(
+        self,
+        arguments: dict[str, typing.Any]
+    ) -> slack_sdk.web.SlackResponse:
+
+        failures: list[str] = self.workspace['failures']
+        failure = failures.pop(0) if failures else None
+        channels: list[dict[str, typing.Any]] = self.workspace['channels']
+
+        if failure is not None: return respond(self, 'conversations.create', arguments, {'ok': False, 'error': failure})
+        if any(channel['name'] == arguments['name'] for channel in channels): return respond(self, 'conversations.create', arguments, {'ok': False, 'error': 'name_taken'})
+
+        channel = {'id': f'CXXX{len(channels) + 1}', 'name': arguments['name'], 'is_private': arguments['is_private'], 'is_archived': False, 'created': self.workspace['clock'], 'creator': self.identity}
+        channels.append(channel)
+
+        return respond(self, 'conversations.create', arguments, {'ok': True, 'channel': channel})
 
 @pytest.fixture
 def database(
@@ -56,7 +76,7 @@ def workspace() -> dict[str, typing.Any]:
     directory = pathlib.Path(os.path.join(pathlib.Path(__file__).parent, 'fixtures', 'slack'))
     users, channels, members = (json.loads(pathlib.Path(os.path.join(directory, name)).read_text(encoding = 'utf-8')) for name in ('users.list.json', 'conversations.list.json', 'conversations.members.json'))
 
-    return {'users': users, 'channels': channels, 'members': members}
+    return {'users': users, 'channels': channels, 'members': members, 'clock': 1793026800, 'failures': []}
 
 @pytest.fixture
 def slack(
@@ -64,6 +84,13 @@ def slack(
 ) -> Slack:
 
     return Slack(workspace)
+
+@pytest.fixture
+def writer(
+    workspace: dict[str, typing.Any]
+) -> Slack:
+
+    return Slack(workspace, 'UXXX0')
 
 def page(
     key: str,
@@ -75,3 +102,12 @@ def page(
     cursor = str(offset + 1) if offset + 1 < len(entries) else ''
 
     return {key: entries[offset:offset + 1], 'response_metadata': {'next_cursor': cursor}}
+
+def respond(
+    client: slack_sdk.web.WebClient,
+    api_method: str,
+    arguments: dict[str, typing.Any],
+    data: dict[str, typing.Any]
+) -> slack_sdk.web.SlackResponse:
+
+    return slack_sdk.web.SlackResponse(client = client, http_verb = 'POST', api_url = api_method, req_args = {'params': arguments}, data = data, headers = {}, status_code = 200).validate()

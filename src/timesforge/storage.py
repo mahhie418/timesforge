@@ -115,6 +115,14 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         ) STRICT
         """,
     ),
+    (
+        'ALTER TABLE request ADD COLUMN channel_id TEXT',
+        'ALTER TABLE request ADD COLUMN error_message TEXT',
+        'DROP INDEX request_user',
+        "CREATE UNIQUE INDEX request_user ON request (workspace_id, user_id) WHERE request_status IN ('reserved', 'pending_name_resolution', 'creating')",
+        'DROP INDEX request_name',
+        "CREATE UNIQUE INDEX request_name ON request (workspace_id, channel_name) WHERE request_status IN ('reserved', 'creating')"
+    ),
 )
 
 class DatabaseError(Exception):

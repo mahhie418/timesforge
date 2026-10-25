@@ -47,6 +47,30 @@ class Channel:
     archival: datetime.datetime | None = None
     deletion: datetime.datetime | None = None
 
+def insert(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    channel: Channel
+) -> None:
+
+    """Registers a times channel in a transaction of the caller.
+
+    Args:
+        connection: Connection to the database, inside the transaction that
+                    registers the channel.
+        workspace_id: Slack workspace ID.
+        channel: The channel.
+
+    Raises:
+        ChannelDuplicateError: The channel is registered already, or its
+                               holder holds a times channel that is not deleted.
+    """
+
+    times = [None if moment is None else moment.isoformat() for moment in (channel.creation, channel.archival, channel.deletion)]
+
+    try: connection.execute(_CHANNEL_INSERT, (workspace_id, channel.channel_id, channel.holder_id, channel.first_name, channel.channel_name, channel.status, times[0], times[0], times[1], times[2]))
+    except sqlite3.IntegrityError: raise ChannelDuplicateError(f'{channel.channel_id} is registered already, or {channel.holder_id} holds a times channel') from None
+
 class RegistryIO:
 
     """Reads and writes the times channels of each workspace in the database.
@@ -126,15 +150,7 @@ class RegistryIO:
                                    holder holds a times channel that is not deleted.
         """
 
-        times = [None if moment is None else moment.isoformat() for moment in (channel.creation, channel.archival, channel.deletion)]
-
-        try:
-
-            with self._database.begin() as connection: connection.execute(_CHANNEL_INSERT, (workspace_id, channel.channel_id, channel.holder_id, channel.first_name, channel.channel_name, channel.status, times[0], times[0], times[1], times[2]))
-
-        except sqlite3.IntegrityError:
-
-            raise ChannelDuplicateError(f'{channel.channel_id} is registered already, or {channel.holder_id} holds a times channel') from None
+        with self._database.begin() as connection: insert(connection, workspace_id, channel)
 
     def archive(
         self,
