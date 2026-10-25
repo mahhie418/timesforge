@@ -7,7 +7,10 @@ authors = [
     { name = "Mahiro Sakaue", email = "mahhie418@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "platformdirs>=4.13.5",
+    "python-dotenv>=1.2.4",
+]
 
 [project.scripts]
 timesforge = "timesforge.terminal:main"
