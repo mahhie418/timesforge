@@ -10,7 +10,7 @@ import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
 
-CREATION = datetime.datetime(2026, 10, 9, 15, 0, tzinfo = datetime.UTC)
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
 CHANGE = CREATION + datetime.timedelta(days = 1)
 
 REFUSALS = [('UXXX1', 'holder'), ('UXXX2', 'used'), ('UXXX3', 'excluded')]
