@@ -3,7 +3,7 @@ import datetime
 import timesforge.storage
 import timesforge.times.exclusion
 
-CREATION = datetime.datetime(2026, 10, 9, 15, 0, tzinfo = datetime.UTC)
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
 
 def create(
     user_id: str,

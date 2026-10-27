@@ -10,7 +10,7 @@ import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
 
-CREATION = datetime.datetime(2026, 10, 9, 15, 0, tzinfo = datetime.UTC)
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
 CHANGE = CREATION + datetime.timedelta(days = 1)
 
 REFUSALS = [('UXXX1', 'holder'), ('UXXX2', 'used'), ('UXXX3', 'excluded')]
@@ -148,3 +148,23 @@ def test_request_name_invalid(
     with pytest.raises(timesforge.times.naming.NameInvalidError): timesforge.times.request.RequestIO(database).reserve('TXXX', 'UXXX1', 'xxx yyy', CREATION)
 
     assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 0
+
+def test_request_status_transition(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.request.RequestIO(database)
+
+    request = store.reserve('TXXX', 'UXXX1', 'Xxx', CREATION)
+
+    assert not store.retry('TXXX', request.request_id, CHANGE)
+    assert not store.lose('TXXX', request.request_id, error = 'xxx', now = CHANGE)
+    assert store.start('TXXX', request.request_id, CHANGE)
+    assert not store.start('TXXX', request.request_id, CHANGE)
+    assert store.lose('TXXX', request.request_id, error = 'xxx', now = CHANGE)
+    assert not store.postpone('TXXX', request.request_id, CHANGE)
+    assert store.retry('TXXX', request.request_id, CHANGE)
+    assert store.fail('TXXX', request.request_id, error = 'yyy', now = CHANGE)
+    assert not store.fail('TXXX', request.request_id, error = 'yyy', now = CHANGE)
+    assert store.load('TXXX', request.request_id) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'failed', grant_id = None, error = 'yyy', creation = CREATION)
+    assert store.load('TXXX', request.request_id + 1) is None

@@ -115,6 +115,37 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         ) STRICT
         """,
     ),
+    (
+        'ALTER TABLE request ADD COLUMN channel_id TEXT',
+        'ALTER TABLE request ADD COLUMN error_message TEXT',
+        'DROP INDEX request_user',
+        "CREATE UNIQUE INDEX request_user ON request (workspace_id, user_id) WHERE request_status IN ('reserved', 'pending_name_resolution', 'creating')",
+        'DROP INDEX request_name',
+        "CREATE UNIQUE INDEX request_name ON request (workspace_id, channel_name) WHERE request_status IN ('reserved', 'creating')"
+    ),
+    (
+        'DROP INDEX request_user',
+        "CREATE UNIQUE INDEX request_user ON request (workspace_id, user_id) WHERE request_status IN ('reserved', 'pending_name_resolution', 'creating', 'reconciling')",
+        'DROP INDEX request_name',
+        "CREATE UNIQUE INDEX request_name ON request (workspace_id, channel_name) WHERE request_status IN ('reserved', 'creating', 'reconciling')"
+    ),
+    (
+        """
+        CREATE TABLE invitation (
+            workspace_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            invitation_status TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            error_message TEXT,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, channel_id, user_id)
+        ) STRICT
+        """,
+    ),
+    (
+        "ALTER TABLE channel ADD COLUMN channel_source TEXT NOT NULL DEFAULT 'created'",
+    ),
 )
 
 class DatabaseError(Exception):

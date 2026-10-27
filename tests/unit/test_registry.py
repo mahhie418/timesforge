@@ -6,7 +6,7 @@ import pytest
 import timesforge.storage
 import timesforge.times.registry
 
-CREATION = datetime.datetime(2026, 10, 9, 15, 0, tzinfo = datetime.UTC)
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
 CHANGE = CREATION + datetime.timedelta(days = 1)
 
 def create(
@@ -151,3 +151,17 @@ def test_registry_holder_duplicated(
     store.save('TYYY', create('CXXX3', 'UXXX1'))
 
     assert [channel.channel_id for channel in store.find('TXXX', 'UXXX1')] == ['CXXX1', 'CXXX2']
+
+def test_registry_workspace_scan(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.registry.RegistryIO(database)
+
+    for channel in [create('CXXX1', 'UXXX1', CHANGE), create('CXXX2', 'UXXX2'), create('CXXX3', 'UXXX3')]: store.save('TXXX', channel)
+
+    store.save('TYYY', create('CXXX4', 'UXXX1'))
+    store.archive('TXXX', 'CXXX2', CHANGE)
+    store.delete('TXXX', 'CXXX3', CHANGE)
+
+    assert [channel.channel_id for channel in store.scan('TXXX')] == ['CXXX2', 'CXXX1']

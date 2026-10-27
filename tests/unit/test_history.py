@@ -6,7 +6,7 @@ import timesforge.times.history
 import timesforge.times.recreation
 import timesforge.times.registry
 
-CREATION = datetime.datetime(2026, 10, 9, 15, 0, tzinfo = datetime.UTC)
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
 CHANGE = CREATION + datetime.timedelta(days = 1)
 
 def test_history_entry_recording(

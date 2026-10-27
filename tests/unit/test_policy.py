@@ -6,7 +6,7 @@ import timesforge.times.policy
 import timesforge.times.recreation
 import timesforge.times.registry
 
-CREATION = datetime.datetime(2026, 10, 9, 15, 0, tzinfo = datetime.UTC)
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
 
 def register(
     database: timesforge.storage.Database,
