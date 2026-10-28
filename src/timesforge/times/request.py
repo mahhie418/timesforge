@@ -1,7 +1,9 @@
 """Requests for times channels, reserved so that no two of them create the same channel."""
 
+import collections.abc
 import dataclasses
 import datetime
+import json
 import sqlite3
 import typing
 
@@ -15,6 +17,7 @@ type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 
 
 _REQUEST_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_id = ?'
 _USER_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? ORDER BY request_id'
+_STATUS_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_status IN (SELECT value FROM json_each(?)) ORDER BY request_id'
 _OPEN_SELECT = "SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution', 'creating', 'reconciling')"
 _NAME_SELECT = "SELECT 1 FROM channel WHERE workspace_id = ? AND channel_name = ? AND channel_status != 'deleted' UNION ALL SELECT 1 FROM request WHERE workspace_id = ? AND channel_name = ? AND request_status IN ('reserved', 'creating', 'reconciling')"
 _GRANT_RESERVE = "UPDATE recreation SET grant_status = 'reserved', reserve_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused' RETURNING grant_id"
@@ -138,6 +141,24 @@ class RequestIO:
         """
 
         return [_decode(row) for row in self._database.connect().execute(_USER_SELECT, (workspace_id, user_id))]
+
+    def scan(
+        self,
+        workspace_id: str,
+        statuses: collections.abc.Collection[Status]
+    ) -> list[Request]:
+
+        """Lists the requests of a workspace in some statuses.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            statuses: The statuses.
+
+        Returns:
+            The requests, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_STATUS_SELECT, (workspace_id, json.dumps(sorted(statuses))))]
 
     def reserve(
         self,

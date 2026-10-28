@@ -52,7 +52,10 @@ def register(
     owner, which reserves the channel for the member, unless its name is
     taken: then it waits for the owner. The channel of an approved request is
     created in the background, as `timesforge.slack.creation.Creator` does,
-    and the modal and the App Home of the member show how it ended.
+    and the modal and the App Home of the member show how it ended. The
+    requests that the app left unfinished when it stopped are taken up in the
+    background once it starts again, and a channel that it was creating then
+    is looked for in Slack before it is created once more.
 
     Args:
         application: The application.
@@ -63,9 +66,11 @@ def register(
                 user token of an admin, or else with the bot token.
 
     Returns:
-        The function that brings the records of every times channel in line
-        with Slack, for the changes made while the app was stopped, given the
-        workspace ID and the current time.
+        The function that catches up with what happened while the app was
+        stopped, given the workspace ID and the current time: it brings the
+        records of every times channel in line with Slack, and takes up the
+        unfinished requests. It must run before the app connects, while no
+        listener can start a request.
     """
 
     registry = timesforge.times.registry.RegistryIO(database)
@@ -126,6 +131,18 @@ def register(
 
         if (request := requests.load(team, request_id)) is not None: show(modal, timesforge.slack.view.report(request = request, language = language))
 
+    def resume(
+        team: str,
+        request_ids: list[int]
+    ) -> None:
+
+        for request_id in request_ids:
+
+            try: build(team).resume(request_id, datetime.datetime.now(datetime.UTC))
+            except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Times channel of request %s was not finished: %s', request_id, error)
+
+            if (request := requests.load(team, request_id)) is not None: refresh(team, request.user_id)
+
     def reconcile(
         team: str,
         now: datetime.datetime,
@@ -141,8 +158,14 @@ def register(
         now: datetime.datetime
     ) -> None:
 
+        for request in requests.scan(team, ['creating']): requests.lose(team, request.request_id, error = 'interrupted', now = now)
+
+        unfinished = [request.request_id for request in requests.scan(team, ['reserved', 'reconciling', 'created', 'inviting'])]
+
         try: reconcile(team, now)
         except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Times channels were not reconciled: %s', error)
+
+        if unfinished: detach(lambda: resume(team, unfinished))
 
     def publish(
         event: dict[str, typing.Any],

@@ -130,7 +130,8 @@ def start(
     """Connects the app to Slack through Socket Mode and serves it until the process stops.
 
     Before it connects, the app catches up with what changed in Slack while
-    it was stopped.
+    it was stopped, and finds the times channels that it left unfinished, so
+    that it never takes a request started after it connected for one of them.
 
     Args:
         application: The application.

@@ -106,6 +106,40 @@ class Creator:
 
         return self._store.load(self._workspace_id, request_id)
 
+    def resume(
+        self,
+        request_id: int,
+        now: datetime.datetime
+    ) -> timesforge.times.request.Request | None:
+
+        """Takes up a request that the app left unfinished when it stopped.
+
+        A reserved request is created, and one whose result is unknown is
+        settled, as `reconcile` does. Once its channel exists, the members are
+        invited, except those in the channel already. A request being created
+        is left alone, because another caller may be creating it now; one that
+        the app left being created must be marked as unknown first.
+
+        Args:
+            request_id: ID of the request.
+            now: The current time.
+
+        Returns:
+            The request afterwards, or None when it does not exist.
+        """
+
+        match request := self._store.load(self._workspace_id, request_id):
+
+            case timesforge.times.request.Request(status = 'reserved'): return self.create(request_id, now)
+            case timesforge.times.request.Request(status = 'reconciling'): return self.reconcile(request_id, now)
+            case timesforge.times.request.Request(status = 'created' | 'inviting' as status, channel_id = str() as channel_id):
+
+                if status == 'inviting' or self._store.advance(self._workspace_id, request_id, now): self._invite(request_id, channel_id, now)
+
+                return self._store.load(self._workspace_id, request_id)
+
+            case _: return request
+
     def _attempt(
         self,
         request: timesforge.times.request.Request,
@@ -171,7 +205,14 @@ class Creator:
         registration = timesforge.times.registry.Channel(channel_id = channel['id'], holder_id = request.user_id, first_name = request.first_name, channel_name = channel['name'], creation = datetime.datetime.fromtimestamp(channel['created'], datetime.UTC))
 
         if not self._store.finish(self._workspace_id, request.request_id, registration, creator_id = channel.get('creator', ''), now = now): return
-        if not self._store.advance(self._workspace_id, request.request_id, now): return
+        if self._store.advance(self._workspace_id, request.request_id, now): self._invite(request.request_id, registration.channel_id, now)
 
-        self._inviter.invite(registration.channel_id, now)
-        self._store.complete(self._workspace_id, request.request_id, now)
+    def _invite(
+        self,
+        request_id: int,
+        channel_id: str,
+        now: datetime.datetime
+    ) -> None:
+
+        self._inviter.invite(channel_id, now)
+        self._store.complete(self._workspace_id, request_id, now)

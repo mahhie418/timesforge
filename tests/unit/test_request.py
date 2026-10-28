@@ -75,6 +75,24 @@ def test_request_member_history(
     assert [request.request_id for request in store.find('TXXX', 'UXXX1')] == [failure.request_id, retry.request_id]
     assert store.find('TXXX', 'UXXX2') == []
 
+def test_request_workspace_scan(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1')
+
+    store = timesforge.times.request.RequestIO(database)
+
+    request = store.reserve('TXXX', 'UXXX2', 'Yyy', CREATION)
+    store.reserve('TXXX', 'UXXX3', 'Xxx', CREATION)
+
+    failure = store.reserve('TXXX', 'UXXX4', 'Zzz', CREATION)
+    store.start('TXXX', failure.request_id, CREATION); store.fail('TXXX', failure.request_id, error = 'xxx', now = CREATION)
+    store.reserve('TYYY', 'UXXX5', 'Yyy', CREATION)
+
+    assert store.scan('TXXX', ['reserved', 'creating']) == [request]
+    assert [item.user_id for item in store.scan('TXXX', ['pending_name_resolution', 'failed'])] == ['UXXX3', 'UXXX4']
+
 def test_request_channel_repetition(
     database: timesforge.storage.Database
 ) -> None:

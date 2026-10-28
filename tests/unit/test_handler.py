@@ -207,6 +207,22 @@ def test_handler_recovery_failure(
     assert 'Times channels were not reconciled' in caplog.text
     assert calls(workspace, 'views.publish') == []
 
+def test_handler_request_recovery(
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database,
+    recover: collections.abc.Callable[[str, datetime.datetime], None]
+) -> None:
+
+    requests = timesforge.times.request.RequestIO(database)
+
+    requests.start('TXXX', requests.reserve('TXXX', 'UXXX2', 'Yyy', CREATION).request_id, CREATION)
+    requests.reserve('TXXX', 'UXXX3', 'Zzz', CREATION)
+
+    recover('TXXX', CREATION)
+
+    assert [(request.user_id, request.status, request.channel_id) for user in ('UXXX2', 'UXXX3') for request in requests.find('TXXX', user)] == [('UXXX2', 'completed', 'CXXX3'), ('UXXX3', 'completed', 'CXXX4')]
+    assert [arguments['user_id'] for arguments in calls(workspace, 'views.publish')] == ['UXXX2', 'UXXX3']
+
 def test_handler_creation_modal(
     application: slack_bolt.App,
     workspace: dict[str, typing.Any]
