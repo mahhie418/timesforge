@@ -6,6 +6,7 @@ import timesforge.configuration
 import timesforge.slack.permission
 import timesforge.slack.view
 import timesforge.times.policy
+import timesforge.times.registry
 import timesforge.times.request
 
 CREATION = datetime.datetime(2026, 10, 28, 15, 0, tzinfo = datetime.UTC)
@@ -40,6 +41,12 @@ REQUESTS_REPORTED = [
     (REQUEST_CREATING, '#times_xxx is being created. The App Home shows when it is ready.')
 ]
 
+CHANNELS_HELD = [
+    timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'deleted', creation = CREATION, deletion = CREATION),
+    timesforge.times.registry.Channel(channel_id = 'CXXX2', holder_id = 'UXXX1', first_name = 'Yyy', channel_name = 'times_yyy', source = 'imported', status = 'archived', creation = CREATION, archival = CREATION),
+    timesforge.times.registry.Channel(channel_id = 'CXXX3', holder_id = 'UXXX1', first_name = 'Zzz', channel_name = 'times_zzz', creation = CREATION)
+]
+
 ROLES_MESSAGE = [
     ('owner', ['You are the owner.']),
     ('member', [])
@@ -54,7 +61,7 @@ def test_view_home_status(
     actions: list[str]
 ) -> None:
 
-    view = timesforge.slack.view.home(refusal = refusal, eligible = True, request = reservation, role = 'member', language = language)
+    view = timesforge.slack.view.home(refusal = refusal, eligible = True, request = reservation, channels = [], role = 'member', language = language)
 
     assert view['type'] == 'home'
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'section'] == texts
@@ -62,9 +69,15 @@ def test_view_home_status(
 
 def test_view_home_guest() -> None:
 
-    view = timesforge.slack.view.home(refusal = None, eligible = False, request = None, role = 'member', language = 'en')
+    view = timesforge.slack.view.home(refusal = None, eligible = False, request = None, channels = [], role = 'member', language = 'en')
 
     assert [(block['text']['text'], 'accessory' in block) for block in view['blocks']] == [('*times channel*\nOnly members can create one.', False)]
+
+def test_view_home_channels() -> None:
+
+    view = timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = CHANNELS_HELD, role = 'member', language = 'en')
+
+    assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'section'][1:] == ['*Your times channels*\n#times_xxx (deleted <!date^1793199600^{date_short}|2026-10-28>)\n<#CXXX2> (archived <!date^1793199600^{date_short}|2026-10-28>)\n<#CXXX3> (created <!date^1793199600^{date_short}|2026-10-28>)']
 
 @pytest.mark.parametrize(('role', 'texts'), ROLES_MESSAGE)
 def test_view_home_role(
@@ -72,7 +85,7 @@ def test_view_home_role(
     texts: list[str]
 ) -> None:
 
-    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, role = role, language = 'en')
+    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], role = role, language = 'en')
 
     assert [element['text'] for block in view['blocks'] if block['type'] == 'context' for element in block['elements']] == texts
 

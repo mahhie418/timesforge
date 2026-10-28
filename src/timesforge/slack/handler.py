@@ -100,7 +100,7 @@ def register(
         history = requests.find(team, user)
         eligible, language = inspect(user)
 
-        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, role = timesforge.slack.permission.role(settings, user), language = language))
+        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), role = timesforge.slack.permission.role(settings, user), language = language))
 
     def show(
         modal: str,

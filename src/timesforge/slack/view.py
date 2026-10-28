@@ -1,5 +1,6 @@
 """Views of the Slack app: the App Home and its modals."""
 
+import datetime
 import typing
 
 import timesforge.configuration
@@ -7,6 +8,7 @@ import timesforge.localisation
 import timesforge.slack.permission
 import timesforge.times.naming
 import timesforge.times.policy
+import timesforge.times.registry
 import timesforge.times.request
 
 CREATION_ACTION = 'creation_action'
@@ -19,6 +21,7 @@ def home(
     refusal: timesforge.times.policy.Refusal | None,
     eligible: bool,
     request: timesforge.times.request.Request | None,
+    channels: list[timesforge.times.registry.Channel],
     role: timesforge.slack.permission.Role,
     language: timesforge.configuration.Language
 ) -> dict[str, typing.Any]:
@@ -29,12 +32,16 @@ def home(
     their first name. While their request is approved, waits for the owner
     because its name is taken, or is being created, the App Home shows it
     instead, and after Slack refused to create its channel, it shows why next
-    to the button. The owner also sees their own role.
+    to the button. Below, the times channels that the viewer holds or held
+    are listed with the day when each was created, archived or deleted, and
+    each that is not deleted links to the channel. The owner also sees their
+    own role.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
         eligible: Whether the viewer is a member of the workspace who may create times channels, rather than a guest.
         request: The latest request of the viewer, or None when they never asked.
+        channels: Times channels that the viewer holds or held, oldest first.
         role: Role of the viewer.
         language: Language of the viewer.
 
@@ -57,6 +64,8 @@ def home(
     if role != 'member': blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': timesforge.localisation.translate(f'home.role.{role}', language)}]})
 
     blocks.append(_item(timesforge.localisation.translate('home.times', language), text, button))
+
+    if channels: blocks.append(_item(timesforge.localisation.translate('home.channels', language), '\n'.join(_describe(channel, language) for channel in channels), None))
 
     return {'type': 'home', 'blocks': blocks}
 
@@ -129,6 +138,19 @@ def report(
 
     return _modal(timesforge.localisation.translate('creation.title', language), text, language)
 
+def _describe(
+    channel: timesforge.times.registry.Channel,
+    language: timesforge.configuration.Language
+) -> str:
+
+    match channel:
+
+        case timesforge.times.registry.Channel(status = 'deleted', deletion = datetime.datetime() as moment): link, state = f'#{channel.channel_name}', timesforge.localisation.translate('home.channel.deleted', language, date = _date(moment))
+        case timesforge.times.registry.Channel(status = 'archived', archival = datetime.datetime() as moment): link, state = f'<#{channel.channel_id}>', timesforge.localisation.translate('home.channel.archived', language, date = _date(moment))
+        case _: link, state = f'<#{channel.channel_id}>', timesforge.localisation.translate('home.channel.active', language, date = _date(channel.creation))
+
+    return timesforge.localisation.translate('home.channel', language, channel = link, state = state)
+
 def _item(
     title: str,
     text: str,
@@ -153,6 +175,12 @@ def _action(
     if style is not None: button['style'] = style
 
     return button
+
+def _date(
+    moment: datetime.datetime
+) -> str:
+
+    return f'<!date^{int(moment.timestamp())}^{{date_short}}|{moment:%Y-%m-%d}>'
 
 def _text(
     title: str,
