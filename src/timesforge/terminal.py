@@ -109,15 +109,14 @@ def _start(
 
         settings = timesforge.configuration.load()
         settings.require('slack_bot_token', 'slack_app_token')
-        application = timesforge.slack.application.build(timesforge.slack.api.connect(settings.slack_bot_token))
 
-    except (timesforge.configuration.ConfigurationError, slack_bolt.error.BoltError) as error:
+        with contextlib.suppress(KeyboardInterrupt): timesforge.slack.application.serve(settings)
+
+    except (timesforge.configuration.ConfigurationError, timesforge.slack.application.LockError, slack_bolt.error.BoltError) as error:
 
         print(f'error: {error}', file = sys.stderr)
 
         return 1
-
-    with contextlib.suppress(KeyboardInterrupt): timesforge.slack.application.start(application, settings.slack_app_token)
 
     return 0
 

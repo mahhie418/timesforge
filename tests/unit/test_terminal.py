@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import unittest.mock
 
 import pytest
 import slack_bolt
@@ -189,12 +190,37 @@ class TestTerminalCommandStart:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
         monkeypatch.setenv('SLACK_APP_TOKEN', token)
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(timesforge.slack.application, 'start', start)
 
         assert timesforge.terminal.main(['start']) == status
         assert capsys.readouterr() == ('', err)
         assert tokens == started
+
+    def test_lock(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        slack: slack_sdk.web.WebClient
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
+        monkeypatch.setenv('SLACK_APP_TOKEN', 'xapp-xxx')
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(timesforge.slack.application, 'start', unittest.mock.Mock())
+
+        with timesforge.slack.application.lock(tmp_path): assert timesforge.terminal.main(['start']) == 1
+        assert capsys.readouterr() == ('', f'error: {timesforge.product.NAME} is already running with the data directory {tmp_path}\n')
 
 class TestTerminalCommandManifest:
 
