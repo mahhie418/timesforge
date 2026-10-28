@@ -1,0 +1,8 @@
+{
+  "home.role.owner": "You are the owner.",
+  "home.times": "times channel",
+  "home.times.available": "You can create one.",
+  "home.times.excluded": "You cannot create one.",
+  "home.times.holder": "You have one.",
+  "home.times.used": "Yours was deleted."
+}

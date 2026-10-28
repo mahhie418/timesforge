@@ -1,14 +1,15 @@
 import pytest
 
+import timesforge.configuration
 import timesforge.slack.permission
 import timesforge.slack.view
 import timesforge.times.policy
 
 STATES_HOME = [
-    (None, ['*times channel*\nYou can create one.']),
-    ('holder', ['*times channel*\nYou have one.']),
-    ('used', ['*times channel*\nYours was deleted.']),
-    ('excluded', ['*times channel*\nYou cannot create one.'])
+    (None, 'en', ['*times channel*\nYou can create one.']),
+    ('holder', 'ja', ['*times チャンネル*\n作成済みです。']),
+    ('used', 'en', ['*times channel*\nYours was deleted.']),
+    ('excluded', 'en', ['*times channel*\nYou cannot create one.'])
 ]
 
 ROLES_MESSAGE = [
@@ -16,13 +17,14 @@ ROLES_MESSAGE = [
     ('member', [])
 ]
 
-@pytest.mark.parametrize(('refusal', 'texts'), STATES_HOME)
+@pytest.mark.parametrize(('refusal', 'language', 'texts'), STATES_HOME)
 def test_view_home_status(
     refusal: timesforge.times.policy.Refusal | None,
+    language: timesforge.configuration.Language,
     texts: list[str]
 ) -> None:
 
-    view = timesforge.slack.view.home(refusal = refusal, role = 'member')
+    view = timesforge.slack.view.home(refusal = refusal, role = 'member', language = language)
 
     assert view['type'] == 'home'
     assert [field['text'] for block in view['blocks'] if 'fields' in block for field in block['fields']] == texts
@@ -33,6 +35,6 @@ def test_view_home_role(
     texts: list[str]
 ) -> None:
 
-    view = timesforge.slack.view.home(refusal = None, role = role)
+    view = timesforge.slack.view.home(refusal = None, role = role, language = 'en')
 
     assert [element['text'] for block in view['blocks'] if block['type'] == 'context' for element in block['elements']] == texts
