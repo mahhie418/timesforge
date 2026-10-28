@@ -3,14 +3,21 @@ import os
 import pathlib
 
 import pytest
+import slack_bolt
 import slack_sdk
 
 import timesforge.product
 import timesforge.slack.api
+import timesforge.slack.application
 import timesforge.storage
 import timesforge.terminal
 
 CHANNELS_COUNT = 'SELECT count(*) FROM channel'
+
+TOKENS_START = [
+    ('xapp-xxx', 0, '', ['xapp-xxx']),
+    ('', 1, 'error: Missing required environment variables: SLACK_APP_TOKEN\n', [])
+]
 
 def prepare(
     tmp_path: pathlib.Path,
@@ -147,6 +154,48 @@ class TestTerminalCommandImport:
         assert exception.value.code == 2
         assert 'one of the arguments --dry-run --apply is required' in capsys.readouterr().err
 
+class TestTerminalCommandStart:
+
+    @pytest.mark.parametrize(('token', 'status', 'err', 'started'), TOKENS_START)
+    def test_token(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        slack: slack_sdk.web.WebClient,
+        token: str,
+        status: int,
+        err: str,
+        started: list[str]
+    ) -> None:
+
+        tokens = []
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        def start(
+            _: slack_bolt.App,
+            token: str
+        ) -> None:
+
+            tokens.append(token)
+
+            raise KeyboardInterrupt
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
+        monkeypatch.setenv('SLACK_APP_TOKEN', token)
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(timesforge.slack.application, 'start', start)
+
+        assert timesforge.terminal.main(['start']) == status
+        assert capsys.readouterr() == ('', err)
+        assert tokens == started
+
 class TestTerminalCommandManifest:
 
     def test_manifest(
@@ -160,3 +209,4 @@ class TestTerminalCommandManifest:
 
         assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'users:read']
         assert manifest['oauth_config']['scopes']['user'] == ['channels:write']
+        assert manifest['settings']['socket_mode_enabled']

@@ -19,5 +19,8 @@
         "channels:write"
       ]
     }
+  },
+  "settings": {
+    "socket_mode_enabled": true
   }
 }

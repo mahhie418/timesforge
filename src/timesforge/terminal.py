@@ -1,17 +1,20 @@
 """Command-line entry point."""
 
 import argparse
+import contextlib
 import datetime
 import importlib.resources
 import os
 import pathlib
 import sys
 
+import slack_bolt.error
 import slack_sdk.errors
 
 import timesforge.configuration
 import timesforge.product
 import timesforge.slack.api
+import timesforge.slack.application
 import timesforge.slack.existing
 import timesforge.storage
 import timesforge.times.registry
@@ -51,6 +54,8 @@ def _build() -> argparse.ArgumentParser:
     mode = importation.add_mutually_exclusive_group(required = True)
     mode.add_argument('--dry-run', action = 'store_true', help = 'show what would be imported, changing nothing')
     mode.add_argument('--apply', action = 'store_true', help = 'import the channels, when every one of them can be')
+    start = commands.add_parser('start', help = 'run the Slack app until it is stopped')
+    start.set_defaults(handler = _start)
     manifest = commands.add_parser('manifest', help = 'print the manifest for creating the Slack app')
     manifest.set_defaults(handler = _manifest)
 
@@ -95,6 +100,26 @@ def _import(
     if namespace.apply: print(f'channels imported: {count}' if not errors else 'nothing imported, because some channels cannot be')
 
     return 1 if errors else 0
+
+def _start(
+    _: argparse.Namespace
+) -> int:
+
+    try:
+
+        settings = timesforge.configuration.load()
+        settings.require('slack_bot_token', 'slack_app_token')
+        application = timesforge.slack.application.build(timesforge.slack.api.connect(settings.slack_bot_token))
+
+    except (timesforge.configuration.ConfigurationError, slack_bolt.error.BoltError) as error:
+
+        print(f'error: {error}', file = sys.stderr)
+
+        return 1
+
+    with contextlib.suppress(KeyboardInterrupt): timesforge.slack.application.start(application, settings.slack_app_token)
+
+    return 0
 
 def _manifest(
     _: argparse.Namespace

@@ -17,7 +17,7 @@ class Slack(slack_sdk.web.WebClient):
         identity: str = 'UXXXB'
     ) -> None:
 
-        super().__init__()
+        super().__init__(token = 'xoxb-xxx')
 
         self.workspace = workspace
         self.identity = identity
