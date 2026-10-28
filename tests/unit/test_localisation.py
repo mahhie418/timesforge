@@ -34,4 +34,4 @@ def test_localisation_message_translation() -> None:
 
 def test_localisation_value_insertion() -> None:
 
-    assert timesforge.localisation.translate('home.times.requested', 'ja', channel = '#times_xxx') == '#times_xxx を申請しました。'
+    assert timesforge.localisation.translate('home.times.approved', 'ja', channel = '#times_xxx') == '#times_xxx が承認されました。'

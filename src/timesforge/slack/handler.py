@@ -10,6 +10,7 @@ import slack_sdk.errors
 
 import timesforge.configuration
 import timesforge.localisation
+import timesforge.slack.invitation
 import timesforge.slack.permission
 import timesforge.slack.reconciliation
 import timesforge.slack.view
@@ -40,9 +41,11 @@ def register(
     state of the channel rather than trusted with the event.
 
     A member who may create a times channel opens a modal from the App Home
-    and enters the first name that names it, which reserves the channel for
-    them. A first name that cannot name a times channel, or a member who may
-    not create one, is refused in the modal.
+    and enters the first name that names it. A first name that cannot name a
+    times channel, a guest, or a member whom the rules do not let create one
+    is refused in the modal. Otherwise the request is approved without the
+    owner, which reserves the channel for the member, unless its name is
+    taken: then it waits for the owner.
 
     Args:
         application: The application.
@@ -58,13 +61,19 @@ def register(
     registry = timesforge.times.registry.RegistryIO(database)
     requests = timesforge.times.request.RequestIO(database)
 
+    def inspect(
+        user: str
+    ) -> tuple[bool, timesforge.configuration.Language]:
+
+        entry = application.client.users_info(user = user, include_locale = True).get('user', {})
+
+        return timesforge.slack.invitation.eligible(entry), timesforge.localisation.choose(entry.get('locale'), settings.timesforge_language_display)
+
     def choose(
         user: str
     ) -> timesforge.configuration.Language:
 
-        entry = application.client.users_info(user = user, include_locale = True).get('user', {})
-
-        return timesforge.localisation.choose(entry.get('locale'), settings.timesforge_language_display)
+        return inspect(user)[1]
 
     def refresh(
         team: str,
@@ -73,8 +82,9 @@ def register(
 
         refusal = timesforge.times.policy.decide(database.connect(), team, user)
         history = requests.find(team, user)
+        eligible, language = inspect(user)
 
-        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, request = history[-1] if history else None, role = timesforge.slack.permission.role(settings, user), language = choose(user)))
+        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, role = timesforge.slack.permission.role(settings, user), language = language))
 
     def reconcile(
         team: str,
@@ -137,24 +147,27 @@ def register(
         if team is None or user is None: return
 
         first_name = view['state']['values'][timesforge.slack.view.NAME_INPUT][timesforge.slack.view.NAME_INPUT]['value']
+        eligible, language = inspect(user)
+
+        if not eligible: ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate('creation.refusal.ineligible', language)}); return
 
         try:
 
-            requests.reserve(team, user, first_name, datetime.datetime.now(datetime.UTC))
+            request = requests.reserve(team, user, first_name, datetime.datetime.now(datetime.UTC))
 
         except timesforge.times.naming.NameInvalidError as error:
 
-            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'creation.error.{error.reason}', choose(user))})
+            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'creation.error.{error.reason}', language)})
 
             return
 
         except timesforge.times.request.RequestRefusedError as error:
 
-            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'home.times.{error.refusal}', choose(user))})
+            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'creation.refusal.{error.refusal}', language)})
 
             return
 
-        ack()
+        ack(response_action = 'update', view = timesforge.slack.view.approve(request = request, language = language))
         refresh(team, user)
 
     application.event('app_home_opened')(publish)

@@ -17,6 +17,7 @@ NAME_INPUT = 'name_input'
 def home(
     *,
     refusal: timesforge.times.policy.Refusal | None,
+    eligible: bool,
     request: timesforge.times.request.Request | None,
     role: timesforge.slack.permission.Role,
     language: timesforge.configuration.Language
@@ -25,11 +26,13 @@ def home(
     """Builds the App Home, which shows whether the viewer may create a times channel.
 
     While the viewer may, a button at the right opens the modal that asks for
-    their first name. While their request is open, the App Home shows it
-    instead. The owner also sees their own role.
+    their first name. While their request is approved, or waits for the
+    owner because its name is taken, the App Home shows it instead. The owner
+    also sees their own role.
 
     Args:
-        refusal: Why the viewer may not create a times channel, or None when they may.
+        refusal: Why the viewer may not create a times channel, or None when the rules let them.
+        eligible: Whether the viewer is a member of the workspace who may create times channels, rather than a guest.
         request: The latest request of the viewer, or None when they never asked.
         role: Role of the viewer.
         language: Language of the viewer.
@@ -40,7 +43,9 @@ def home(
 
     match request:
 
-        case timesforge.times.request.Request(status = 'reserved' | 'pending_name_resolution'): text, button = timesforge.localisation.translate('home.times.requested', language, channel = f'#{request.channel_name}'), None
+        case timesforge.times.request.Request(status = 'reserved'): text, button = timesforge.localisation.translate('home.times.approved', language, channel = f'#{request.channel_name}'), None
+        case timesforge.times.request.Request(status = 'pending_name_resolution'): text, button = timesforge.localisation.translate('home.times.pending', language, channel = f'#{request.channel_name}'), None
+        case _ if refusal is None and not eligible: text, button = timesforge.localisation.translate('home.times.ineligible', language), None
         case _ if refusal is None: text, button = timesforge.localisation.translate('home.times.available', language), _action(CREATION_ACTION, timesforge.localisation.translate('home.creation', language), style = 'primary')
         case _: text, button = timesforge.localisation.translate(f'home.times.{refusal}', language), None
 
@@ -70,6 +75,26 @@ def collect(
     block = {'type': 'input', 'block_id': NAME_INPUT, 'label': _plain(timesforge.localisation.translate('creation.name', language)), 'hint': _plain(timesforge.localisation.translate('creation.hint', language)), 'element': element}
 
     return {'type': 'modal', 'callback_id': CREATION_CALLBACK, 'title': _plain(timesforge.localisation.translate('creation.title', language)), 'submit': _plain(timesforge.localisation.translate('creation.submit', language)), 'close': _plain(timesforge.localisation.translate('creation.close', language)), 'blocks': [block]}
+
+def approve(
+    *,
+    request: timesforge.times.request.Request,
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal that tells a member how their request was decided, once they submit their first name.
+
+    Args:
+        request: The open request of the member: approved, or pending while its name is taken.
+        language: Language of the member.
+
+    Returns:
+        The view, as an update response takes it.
+    """
+
+    key = 'creation.pending' if request.status == 'pending_name_resolution' else 'creation.approval'
+
+    return _modal(timesforge.localisation.translate('creation.title', language), timesforge.localisation.translate(key, language, channel = f'#{request.channel_name}'), language)
 
 def _item(
     title: str,
@@ -108,3 +133,11 @@ def _plain(
 ) -> dict[str, str]:
 
     return {'type': 'plain_text', 'text': text}
+
+def _modal(
+    title: str,
+    text: str,
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    return {'type': 'modal', 'title': _plain(title), 'close': _plain(timesforge.localisation.translate('modal.close', language)), 'blocks': [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': text}}]}
