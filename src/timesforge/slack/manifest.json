@@ -1,0 +1,23 @@
+{
+  "display_information": {
+    "description": "Creates a times channel for each member from App Home.",
+    "name": "timesforge"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "timesforge"
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:manage",
+        "channels:read",
+        "users:read"
+      ],
+      "user": [
+        "channels:write"
+      ]
+    }
+  }
+}

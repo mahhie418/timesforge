@@ -146,3 +146,17 @@ class TestTerminalCommandImport:
 
         assert exception.value.code == 2
         assert 'one of the arguments --dry-run --apply is required' in capsys.readouterr().err
+
+class TestTerminalCommandManifest:
+
+    def test_manifest(
+        self,
+        capsys: pytest.CaptureFixture[str]
+    ) -> None:
+
+        assert timesforge.terminal.main(['manifest']) == 0
+
+        manifest = json.loads(capsys.readouterr().out)
+
+        assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'users:read']
+        assert manifest['oauth_config']['scopes']['user'] == ['channels:write']

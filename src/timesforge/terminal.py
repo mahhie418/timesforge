@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import importlib.resources
 import os
 import pathlib
 import sys
@@ -50,6 +51,8 @@ def _build() -> argparse.ArgumentParser:
     mode = importation.add_mutually_exclusive_group(required = True)
     mode.add_argument('--dry-run', action = 'store_true', help = 'show what would be imported, changing nothing')
     mode.add_argument('--apply', action = 'store_true', help = 'import the channels, when every one of them can be')
+    manifest = commands.add_parser('manifest', help = 'print the manifest for creating the Slack app')
+    manifest.set_defaults(handler = _manifest)
 
     return parser
 
@@ -92,3 +95,11 @@ def _import(
     if namespace.apply: print(f'channels imported: {count}' if not errors else 'nothing imported, because some channels cannot be')
 
     return 1 if errors else 0
+
+def _manifest(
+    _: argparse.Namespace
+) -> int:
+
+    print(importlib.resources.files('timesforge.slack').joinpath('manifest.json').read_text(encoding = 'utf-8'), end = '')
+
+    return 0
