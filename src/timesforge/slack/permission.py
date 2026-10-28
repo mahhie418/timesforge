@@ -1,6 +1,9 @@
 """Roles of Slack users, which decide what each user sees and may do in the Slack app."""
 
+import collections.abc
 import typing
+
+import slack_bolt
 
 import timesforge.configuration
 
@@ -22,3 +25,32 @@ def role(
     """
 
     return 'owner' if user == settings.timesforge_owner_id else 'member'
+
+def restrict(
+    settings: timesforge.configuration.Settings
+) -> collections.abc.Callable[..., slack_bolt.BoltResponse | None]:
+
+    """Builds a middleware that lets only the owner act.
+
+    A request from anyone else, such as a pressed button, is acknowledged and
+    dropped, so that no listener acts for them even if a view showed them a
+    button.
+
+    Args:
+        settings: Settings of the deployment.
+
+    Returns:
+        The middleware, for the middleware of a listener.
+    """
+
+    def check(
+        context: slack_bolt.BoltContext,
+        ack: slack_bolt.Ack,
+        next_: collections.abc.Callable[[], None]
+    ) -> slack_bolt.BoltResponse | None:
+
+        if context.user_id is None or role(settings, context.user_id) != 'owner': return ack()
+
+        return next_()
+
+    return check

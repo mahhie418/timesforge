@@ -18,6 +18,7 @@ import timesforge.slack.permission
 import timesforge.slack.reconciliation
 import timesforge.slack.view
 import timesforge.storage
+import timesforge.times.exclusion
 import timesforge.times.invitation
 import timesforge.times.naming
 import timesforge.times.policy
@@ -57,6 +58,11 @@ def register(
     background once it starts again, and a channel that it was creating then
     is looked for in Slack before it is created once more.
 
+    Only the owner excludes members from creating times channels and lets
+    them create one again, as `timesforge.slack.permission.restrict` makes
+    sure. Excluding a member withdraws their request that waits to be created
+    or for the owner, and the App Home of the member shows the change.
+
     Args:
         application: The application.
         settings: Settings of the deployment.
@@ -76,6 +82,8 @@ def register(
     registry = timesforge.times.registry.RegistryIO(database)
     requests = timesforge.times.request.RequestIO(database)
     invitations = timesforge.times.invitation.InvitationIO(database)
+    exclusions = timesforge.times.exclusion.ExclusionIO(database)
+    guard = [timesforge.slack.permission.restrict(settings)]
 
     def inspect(
         user: str
@@ -99,8 +107,9 @@ def register(
         refusal = timesforge.times.policy.decide(database.connect(), team, user)
         history = requests.find(team, user)
         eligible, language = inspect(user)
+        role = timesforge.slack.permission.role(settings, user)
 
-        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), role = timesforge.slack.permission.role(settings, user), language = language))
+        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), exclusions = exclusions.find(team) if role == 'owner' else [], role = role, language = language))
 
     def show(
         modal: str,
@@ -235,6 +244,46 @@ def register(
 
         if request.status == 'reserved': detach(lambda: create(team, user, request.request_id, view['id'], language))
 
+    def manage(
+        ack: slack_bolt.Ack,
+        body: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        ack()
+
+        if context.team_id is None or context.user_id is None: return
+
+        application.client.views_open(trigger_id = body['trigger_id'], view = timesforge.slack.view.exclude(exclusions = exclusions.find(context.team_id), language = choose(context.user_id)))
+
+    def exclude(
+        ack: slack_bolt.Ack,
+        view: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        team, owner = context.team_id, context.user_id
+
+        if team is None or owner is None: return
+
+        values = view['state']['values']
+        user = values[timesforge.slack.view.MEMBER_INPUT][timesforge.slack.view.MEMBER_INPUT]['selected_user']
+        choice = values[timesforge.slack.view.CHOICE_INPUT][timesforge.slack.view.CHOICE_INPUT]['selected_option']['value']
+        reason = values[timesforge.slack.view.REASON_INPUT][timesforge.slack.view.REASON_INPUT].get('value') or ''
+        language, now = choose(owner), datetime.datetime.now(datetime.UTC)
+
+        if choice == 'exclude' and not reason.strip(): ack(response_action = 'errors', errors = {timesforge.slack.view.REASON_INPUT: timesforge.localisation.translate('exclusion.error.reason', language)}); return
+
+        if choice == 'exclude': changed = exclusions.add(team, timesforge.times.exclusion.Exclusion(user_id = user, reason = reason.strip(), owner_id = owner, creation = now))
+        else: changed = exclusions.remove(team, user, owner_id = owner, now = now)
+
+        if not changed: ack(response_action = 'errors', errors = {timesforge.slack.view.MEMBER_INPUT: timesforge.localisation.translate(f'exclusion.error.{choice}', language)}); return
+        if choice == 'exclude': requests.withdraw(team, user, error = 'excluded', now = now)
+
+        ack()
+
+        for person in dict.fromkeys([owner, user]): refresh(team, person)
+
     application.event('app_home_opened')(publish)
     application.event('channel_archive')(follow)
     application.event('channel_deleted')(follow)
@@ -242,6 +291,8 @@ def register(
     application.event('channel_unarchive')(follow)
     application.action(timesforge.slack.view.CREATION_ACTION)(ask)
     application.view(timesforge.slack.view.CREATION_CALLBACK)(reserve)
+    application.action(timesforge.slack.view.EXCLUSION_ACTION, middleware = guard)(manage)
+    application.view(timesforge.slack.view.EXCLUSION_CALLBACK, middleware = guard)(exclude)
 
     return recover
 

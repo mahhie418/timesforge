@@ -6,6 +6,7 @@ import typing
 import timesforge.configuration
 import timesforge.localisation
 import timesforge.slack.permission
+import timesforge.times.exclusion
 import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.registry
@@ -13,8 +14,13 @@ import timesforge.times.request
 
 CREATION_ACTION = 'creation_action'
 CREATION_CALLBACK = 'creation_callback'
+EXCLUSION_ACTION = 'exclusion_action'
+EXCLUSION_CALLBACK = 'exclusion_callback'
 
 NAME_INPUT = 'name_input'
+MEMBER_INPUT = 'member_input'
+CHOICE_INPUT = 'choice_input'
+REASON_INPUT = 'reason_input'
 
 def home(
     *,
@@ -22,6 +28,7 @@ def home(
     eligible: bool,
     request: timesforge.times.request.Request | None,
     channels: list[timesforge.times.registry.Channel],
+    exclusions: list[timesforge.times.exclusion.Exclusion],
     role: timesforge.slack.permission.Role,
     language: timesforge.configuration.Language
 ) -> dict[str, typing.Any]:
@@ -35,13 +42,15 @@ def home(
     to the button. Below, the times channels that the viewer holds or held
     are listed with the day when each was created, archived or deleted, and
     each that is not deleted links to the channel. The owner also sees their
-    own role.
+    own role and, under a heading, the members excluded from creating times
+    channels, with a button that changes them.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
         eligible: Whether the viewer is a member of the workspace who may create times channels, rather than a guest.
         request: The latest request of the viewer, or None when they never asked.
         channels: Times channels that the viewer holds or held, oldest first.
+        exclusions: Members excluded from creating times channels, which only the owner sees.
         role: Role of the viewer.
         language: Language of the viewer.
 
@@ -66,6 +75,11 @@ def home(
     blocks.append(_item(timesforge.localisation.translate('home.times', language), text, button))
 
     if channels: blocks.append(_item(timesforge.localisation.translate('home.channels', language), '\n'.join(_describe(channel, language) for channel in channels), None))
+
+    if role == 'owner':
+
+        blocks.extend([{'type': 'divider'}, _heading(timesforge.localisation.translate('home.heading.owner', language))])
+        blocks.append(_item(timesforge.localisation.translate('home.exclusions', language), ', '.join(f'<@{exclusion.user_id}>' for exclusion in exclusions) or timesforge.localisation.translate('home.exclusions.none', language), _action(EXCLUSION_ACTION, timesforge.localisation.translate('home.exclusions.action', language))))
 
     return {'type': 'home', 'blocks': blocks}
 
@@ -138,6 +152,37 @@ def report(
 
     return _modal(timesforge.localisation.translate('creation.title', language), text, language)
 
+def exclude(
+    *,
+    exclusions: list[timesforge.times.exclusion.Exclusion],
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal in which the owner excludes a member from creating times channels, or lets them create one again.
+
+    The members excluded now are listed with the reasons, and excluding a
+    member needs a reason.
+
+    Args:
+        exclusions: Members excluded now.
+        language: Language of the owner.
+
+    Returns:
+        The view, as views.open takes it.
+    """
+
+    lines = [timesforge.localisation.translate('exclusion.entry', language, user = f'<@{exclusion.user_id}>', reason = exclusion.reason) for exclusion in exclusions] or [timesforge.localisation.translate('exclusion.none', language)]
+    choices = {choice: {'text': _plain(timesforge.localisation.translate(f'exclusion.choice.{choice}', language)), 'value': choice} for choice in ('exclude', 'include')}
+
+    blocks = [
+        {'type': 'section', 'text': {'type': 'mrkdwn', 'text': '\n'.join(lines)}},
+        {'type': 'input', 'block_id': MEMBER_INPUT, 'label': _plain(timesforge.localisation.translate('exclusion.member', language)), 'element': {'type': 'users_select', 'action_id': MEMBER_INPUT}},
+        {'type': 'input', 'block_id': CHOICE_INPUT, 'label': _plain(timesforge.localisation.translate('exclusion.choice', language)), 'element': {'type': 'radio_buttons', 'action_id': CHOICE_INPUT, 'options': list(choices.values()), 'initial_option': choices['exclude']}},
+        {'type': 'input', 'block_id': REASON_INPUT, 'optional': True, 'label': _plain(timesforge.localisation.translate('exclusion.reason', language)), 'hint': _plain(timesforge.localisation.translate('exclusion.hint', language)), 'element': {'type': 'plain_text_input', 'action_id': REASON_INPUT}}
+    ]
+
+    return {'type': 'modal', 'callback_id': EXCLUSION_CALLBACK, 'title': _plain(timesforge.localisation.translate('exclusion.title', language)), 'submit': _plain(timesforge.localisation.translate('exclusion.submit', language)), 'close': _plain(timesforge.localisation.translate('exclusion.close', language)), 'blocks': blocks}
+
 def _describe(
     channel: timesforge.times.registry.Channel,
     language: timesforge.configuration.Language
@@ -150,6 +195,12 @@ def _describe(
         case _: link, state = f'<#{channel.channel_id}>', timesforge.localisation.translate('home.channel.active', language, date = _date(channel.creation))
 
     return timesforge.localisation.translate('home.channel', language, channel = link, state = state)
+
+def _heading(
+    text: str
+) -> dict[str, typing.Any]:
+
+    return {'type': 'header', 'text': _plain(text)}
 
 def _item(
     title: str,

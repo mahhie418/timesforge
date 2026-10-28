@@ -30,6 +30,7 @@ _REQUEST_FAIL = "UPDATE request SET request_status = 'failed', error_message = ?
 _REQUEST_FINISH = "UPDATE request SET request_status = 'created', channel_id = ?, error_message = NULL, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status IN ('creating', 'reconciling') RETURNING user_id, grant_id"
 _REQUEST_ADVANCE = "UPDATE request SET request_status = 'inviting', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'created'"
 _REQUEST_COMPLETE = "UPDATE request SET request_status = 'completed', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'inviting'"
+_REQUEST_WITHDRAW = "UPDATE request SET request_status = 'failed', error_message = ?, update_time = ? WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution') RETURNING grant_id"
 _GRANT_RELEASE = "UPDATE recreation SET grant_status = 'unused', reserve_time = NULL WHERE grant_id = ? AND grant_status = 'reserved'"
 _GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE grant_id = ? AND grant_status = 'reserved'"
 
@@ -410,6 +411,38 @@ class RequestIO:
         """
 
         with self._database.begin() as connection: return connection.execute(_REQUEST_COMPLETE, (now.isoformat(), workspace_id, request_id)).rowcount == 1
+
+    def withdraw(
+        self,
+        workspace_id: str,
+        user_id: str,
+        *,
+        error: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Withdraws the request of a member that waits to be created or for the owner, as when the owner excludes the member.
+
+        The request fails, and its recreation grant, if it has one, becomes
+        unused again. A request being created is left to finish.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+            error: Why the request was withdrawn.
+            now: The current time.
+
+        Returns:
+            Whether the member had a request that was reserved or pending.
+        """
+
+        with self._database.begin() as connection:
+
+            if (row := connection.execute(_REQUEST_WITHDRAW, (error, now.isoformat(), workspace_id, user_id)).fetchone()) is None: return False
+
+            connection.execute(_GRANT_RELEASE, (row['grant_id'],))
+
+            return True
 
 def _decode(
     row: sqlite3.Row

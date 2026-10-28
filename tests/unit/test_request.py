@@ -182,6 +182,27 @@ def test_request_name_invalid(
 
     assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 0
 
+def test_request_member_withdrawal(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1').delete('TXXX', 'CXXX1', CREATION)
+
+    grants = timesforge.times.recreation.RecreationIO(database)
+    grants.grant('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
+
+    store = timesforge.times.request.RequestIO(database)
+    request = store.reserve('TXXX', 'UXXX1', 'Xxx', CHANGE)
+
+    assert store.withdraw('TXXX', 'UXXX1', error = 'excluded', now = CHANGE)
+    assert not store.withdraw('TXXX', 'UXXX1', error = 'excluded', now = CHANGE)
+    assert store.load('TXXX', request.request_id) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'failed', grant_id = request.grant_id, error = 'excluded', creation = CHANGE)
+    assert [grant.status for grant in grants.find('TXXX', 'UXXX1')] == ['unused']
+
+    store.start('TXXX', store.reserve('TXXX', 'UXXX1', 'Xxx', CHANGE).request_id, CHANGE)
+
+    assert not store.withdraw('TXXX', 'UXXX1', error = 'excluded', now = CHANGE)
+
 def test_request_status_transition(
     database: timesforge.storage.Database
 ) -> None:
