@@ -17,7 +17,7 @@ class Slack(slack_sdk.web.WebClient):
         identity: str = 'UXXXB'
     ) -> None:
 
-        super().__init__(token = 'xoxb-xxx')
+        super().__init__(token = 'xoxb-xxx', base_url = 'http://127.0.0.1:9/')
 
         self.workspace = workspace
         self.identity = identity
@@ -34,6 +34,9 @@ class Slack(slack_sdk.web.WebClient):
 
         arguments = {key: value for key, value in {**(params or {}), **(json or {})}.items() if value is not None}
 
+        calls: list[tuple[str, dict[str, typing.Any]]] = self.workspace['calls']
+        calls.append((api_method, arguments))
+
         match api_method:
 
             case 'auth.test': data = {'ok': True, 'team_id': 'TXXX', 'user_id': self.identity}
@@ -44,6 +47,7 @@ class Slack(slack_sdk.web.WebClient):
             case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'].get(arguments['channel'], []), arguments)}
             case 'conversations.create': return self.create(arguments)
             case 'conversations.invite': return self.invite(arguments)
+            case 'views.publish': data = {'ok': True}
             case _: raise NotImplementedError(api_method)
 
         return respond(self, api_method, arguments, data)
@@ -102,7 +106,7 @@ def workspace() -> dict[str, typing.Any]:
     directory = pathlib.Path(os.path.join(pathlib.Path(__file__).parent, 'fixtures', 'slack'))
     users, channels, members = (json.loads(pathlib.Path(os.path.join(directory, name)).read_text(encoding = 'utf-8')) for name in ('users.list.json', 'conversations.list.json', 'conversations.members.json'))
 
-    return {'users': users, 'channels': channels, 'members': members, 'clock': 1793026800, 'failures': [], 'refusals': {}}
+    return {'users': users, 'channels': channels, 'members': members, 'clock': 1793026800, 'failures': [], 'refusals': {}, 'calls': []}
 
 @pytest.fixture
 def slack(

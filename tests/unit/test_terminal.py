@@ -15,9 +15,9 @@ import timesforge.terminal
 
 CHANNELS_COUNT = 'SELECT count(*) FROM channel'
 
-TOKENS_START = [
-    ('xapp-xxx', 0, '', ['xapp-xxx']),
-    ('', 1, 'error: Missing required environment variables: SLACK_APP_TOKEN\n', [])
+ENVIRONMENTS_START = [
+    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1'}, 0, '', ['xapp-xxx']),
+    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID\n', [])
 ]
 
 def prepare(
@@ -157,14 +157,14 @@ class TestTerminalCommandImport:
 
 class TestTerminalCommandStart:
 
-    @pytest.mark.parametrize(('token', 'status', 'err', 'started'), TOKENS_START)
-    def test_token(
+    @pytest.mark.parametrize(('environment', 'status', 'err', 'started'), ENVIRONMENTS_START)
+    def test_environment(
         self,
         tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         slack: slack_sdk.web.WebClient,
-        token: str,
+        environment: dict[str, str],
         status: int,
         err: str,
         started: list[str]
@@ -189,10 +189,11 @@ class TestTerminalCommandStart:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
-        monkeypatch.setenv('SLACK_APP_TOKEN', token)
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(timesforge.slack.application, 'start', start)
+
+        for name, value in environment.items(): monkeypatch.setenv(name, value)
 
         assert timesforge.terminal.main(['start']) == status
         assert capsys.readouterr() == ('', err)
@@ -215,6 +216,7 @@ class TestTerminalCommandStart:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
         monkeypatch.setenv('SLACK_APP_TOKEN', 'xapp-xxx')
+        monkeypatch.setenv('TIMESFORGE_OWNER_ID', 'UXXX1')
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(timesforge.slack.application, 'start', unittest.mock.Mock())
@@ -235,4 +237,6 @@ class TestTerminalCommandManifest:
 
         assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'users:read']
         assert manifest['oauth_config']['scopes']['user'] == ['channels:write']
+        assert manifest['features']['app_home']['home_tab_enabled']
+        assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened']
         assert manifest['settings']['socket_mode_enabled']

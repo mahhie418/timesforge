@@ -108,11 +108,11 @@ def _start(
     try:
 
         settings = timesforge.configuration.load()
-        settings.require('slack_bot_token', 'slack_app_token')
+        settings.require('slack_bot_token', 'slack_app_token', 'timesforge_owner_id')
 
         with contextlib.suppress(KeyboardInterrupt): timesforge.slack.application.serve(settings)
 
-    except (timesforge.configuration.ConfigurationError, timesforge.slack.application.LockError, slack_bolt.error.BoltError) as error:
+    except (timesforge.configuration.ConfigurationError, timesforge.slack.application.LockError, timesforge.storage.DatabaseError, slack_bolt.error.BoltError) as error:
 
         print(f'error: {error}', file = sys.stderr)
 

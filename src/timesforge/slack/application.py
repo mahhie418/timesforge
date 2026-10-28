@@ -13,6 +13,8 @@ import slack_sdk
 import timesforge.configuration
 import timesforge.product
 import timesforge.slack.api
+import timesforge.slack.handler
+import timesforge.storage
 
 LOCK_FILE = 'serve.lock'
 
@@ -21,13 +23,17 @@ class LockError(Exception):
     """Raised when another app already serves with the same data directory."""
 
 def build(
-    client: slack_sdk.web.WebClient
+    client: slack_sdk.web.WebClient,
+    settings: timesforge.configuration.Settings,
+    database: timesforge.storage.Database
 ) -> slack_bolt.App:
 
-    """Builds the Slack app.
+    """Builds the Slack app with its listeners.
 
     Args:
         client: Slack client with the bot token.
+        settings: Settings of the deployment.
+        database: Database with the times channels of each workspace.
 
     Returns:
         The app.
@@ -36,7 +42,10 @@ def build(
         slack_bolt.error.BoltError: Slack refused the bot token.
     """
 
-    return slack_bolt.App(token = client.token, client = client)
+    application = slack_bolt.App(token = client.token, client = client)
+    timesforge.slack.handler.register(application, settings, database)
+
+    return application
 
 @contextlib.contextmanager
 def lock(
@@ -69,7 +78,6 @@ def lock(
 
         try: connection.execute('BEGIN EXCLUSIVE')
         except sqlite3.OperationalError: raise LockError(f'{timesforge.product.NAME} is already running with the data directory {directory}') from None
-
         yield
 
     finally:
@@ -87,10 +95,16 @@ def serve(
 
     Raises:
         LockError: Another app already serves with the data directory.
+        timesforge.storage.DatabaseError: The database cannot be used.
         slack_bolt.error.BoltError: Slack refused the bot token.
     """
 
-    with lock(settings.timesforge_data_directory): start(build(timesforge.slack.api.connect(settings.slack_bot_token)), settings.slack_app_token)
+    with lock(settings.timesforge_data_directory):
+
+        database = timesforge.storage.Database(pathlib.Path(os.path.join(settings.timesforge_data_directory, timesforge.storage.DATABASE_FILE)))
+
+        try: start(build(timesforge.slack.api.connect(settings.slack_bot_token), settings, database), settings.slack_app_token)
+        finally: database.close()
 
 def start(
     application: slack_bolt.App,

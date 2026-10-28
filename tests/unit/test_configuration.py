@@ -13,6 +13,7 @@ ENVIRONMENT_VALID = {
     'SLACK_BOT_TOKEN': 'xoxb-xxx',
     'SLACK_APP_TOKEN': 'xapp-xxx',
     'SLACK_USER_TOKEN': 'xoxp-xxx',
+    'TIMESFORGE_OWNER_ID': ' UXXX ',
     'TIMESFORGE_LANGUAGE_DISPLAY': 'JA'
 }
 
@@ -20,6 +21,7 @@ ENVIRONMENT_INVALID = [
     ('SLACK_BOT_TOKEN', 'xapp-xxx', 'SLACK_BOT_TOKEN'),
     ('SLACK_APP_TOKEN', 'xoxb-xxx', 'SLACK_APP_TOKEN'),
     ('SLACK_USER_TOKEN', 'xoxb-xxx', 'SLACK_USER_TOKEN'),
+    ('TIMESFORGE_OWNER_ID', 'UXXX,WXXX', 'TIMESFORGE_OWNER_ID'),
     ('TIMESFORGE_LANGUAGE_DISPLAY', 'xxx', 'TIMESFORGE_LANGUAGE_DISPLAY')
 ]
 
@@ -42,6 +44,7 @@ def test_configuration_values_default() -> None:
     assert not settings.slack_bot_token
     assert not settings.slack_app_token
     assert not settings.slack_user_token
+    assert not settings.timesforge_owner_id
     assert settings.timesforge_data_directory == platformdirs.user_data_path(timesforge.product.NAME, appauthor = False)
     assert settings.timesforge_language_display == 'en'
 
@@ -52,6 +55,7 @@ def test_configuration_values_parse() -> None:
     assert settings.slack_bot_token == ENVIRONMENT_VALID['SLACK_BOT_TOKEN']
     assert settings.slack_app_token == ENVIRONMENT_VALID['SLACK_APP_TOKEN']
     assert settings.slack_user_token == ENVIRONMENT_VALID['SLACK_USER_TOKEN']
+    assert settings.timesforge_owner_id == 'UXXX'
     assert settings.timesforge_language_display == 'ja'
 
 @pytest.mark.parametrize(('name', 'value', 'expected'), ENVIRONMENT_INVALID)
@@ -72,7 +76,7 @@ def test_configuration_values_secure() -> None:
 def test_configuration_values_present() -> None:
 
     settings = timesforge.configuration.load(ENVIRONMENT_VALID)
-    settings.require('slack_bot_token', 'slack_app_token', 'slack_user_token')
+    settings.require('slack_bot_token', 'slack_app_token', 'slack_user_token', 'timesforge_owner_id')
 
 def test_configuration_values_missing() -> None:
 
