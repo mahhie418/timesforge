@@ -26,7 +26,8 @@ class LockError(Exception):
 def build(
     client: slack_sdk.web.WebClient,
     settings: timesforge.configuration.Settings,
-    database: timesforge.storage.Database
+    database: timesforge.storage.Database,
+    writer: slack_sdk.web.WebClient
 ) -> tuple[slack_bolt.App, collections.abc.Callable[[str, datetime.datetime], None]]:
 
     """Builds the Slack app with its listeners.
@@ -35,6 +36,7 @@ def build(
         client: Slack client with the bot token.
         settings: Settings of the deployment.
         database: Database with the times channels of each workspace.
+        writer: Slack client that creates the times channels and sends no request twice.
 
     Returns:
         The app, and the function that catches up with what changed in Slack
@@ -46,7 +48,7 @@ def build(
 
     application = slack_bolt.App(token = client.token, client = client)
 
-    return application, timesforge.slack.handler.register(application, settings, database)
+    return application, timesforge.slack.handler.register(application, settings, database, writer)
 
 @contextlib.contextmanager
 def lock(
@@ -91,6 +93,10 @@ def serve(
 
     """Serves the Slack app until the process stops.
 
+    The times channels are created with the user token of an admin when the
+    settings have one, for a workspace where only admins may create channels,
+    or else with the bot token.
+
     Args:
         settings: Settings of the deployment, with the bot and app-level tokens.
 
@@ -106,7 +112,9 @@ def serve(
 
         try:
 
-            application, recover = build(timesforge.slack.api.connect(settings.slack_bot_token), settings, database)
+            client = timesforge.slack.api.connect(settings.slack_bot_token)
+            writer = timesforge.slack.api.connect(settings.slack_user_token or settings.slack_bot_token, idempotent = False)
+            application, recover = build(client, settings, database, writer)
             start(application, settings.slack_app_token, recover)
 
         finally:

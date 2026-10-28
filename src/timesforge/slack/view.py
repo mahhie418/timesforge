@@ -26,9 +26,10 @@ def home(
     """Builds the App Home, which shows whether the viewer may create a times channel.
 
     While the viewer may, a button at the right opens the modal that asks for
-    their first name. While their request is approved, or waits for the
-    owner because its name is taken, the App Home shows it instead. The owner
-    also sees their own role.
+    their first name. While their request is approved, waits for the owner
+    because its name is taken, or is being created, the App Home shows it
+    instead, and after Slack refused to create its channel, it shows why next
+    to the button. The owner also sees their own role.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
@@ -45,7 +46,9 @@ def home(
 
         case timesforge.times.request.Request(status = 'reserved'): text, button = timesforge.localisation.translate('home.times.approved', language, channel = f'#{request.channel_name}'), None
         case timesforge.times.request.Request(status = 'pending_name_resolution'): text, button = timesforge.localisation.translate('home.times.pending', language, channel = f'#{request.channel_name}'), None
+        case timesforge.times.request.Request(status = 'creating' | 'reconciling' | 'created' | 'inviting'): text, button = timesforge.localisation.translate('home.times.creating', language, channel = f'#{request.channel_name}'), None
         case _ if refusal is None and not eligible: text, button = timesforge.localisation.translate('home.times.ineligible', language), None
+        case timesforge.times.request.Request(status = 'failed') if refusal is None: text, button = timesforge.localisation.translate('home.times.failed', language, channel = f'#{request.channel_name}', error = str(request.error)), _action(CREATION_ACTION, timesforge.localisation.translate('home.creation', language), style = 'primary')
         case _ if refusal is None: text, button = timesforge.localisation.translate('home.times.available', language), _action(CREATION_ACTION, timesforge.localisation.translate('home.creation', language), style = 'primary')
         case _: text, button = timesforge.localisation.translate(f'home.times.{refusal}', language), None
 
@@ -95,6 +98,36 @@ def approve(
     key = 'creation.pending' if request.status == 'pending_name_resolution' else 'creation.approval'
 
     return _modal(timesforge.localisation.translate('creation.title', language), timesforge.localisation.translate(key, language, channel = f'#{request.channel_name}'), language)
+
+def report(
+    *,
+    request: timesforge.times.request.Request,
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal that tells a member how the creation of their times channel ended.
+
+    Args:
+        request: The request, once the creation ended: completed with a link
+                 to the channel, failed, pending when Slack has a channel with
+                 the name, or still open while nobody knows whether Slack
+                 created the channel.
+        language: Language of the member.
+
+    Returns:
+        The view, as views.update takes it.
+    """
+
+    channel = f'#{request.channel_name}'
+
+    match request:
+
+        case timesforge.times.request.Request(status = 'completed', channel_id = str() as channel_id): text = timesforge.localisation.translate('creation.success', language, channel = f'<#{channel_id}>')
+        case timesforge.times.request.Request(status = 'failed'): text = timesforge.localisation.translate('creation.failure', language, channel = channel, error = str(request.error))
+        case timesforge.times.request.Request(status = 'pending_name_resolution'): text = timesforge.localisation.translate('creation.pending', language, channel = channel)
+        case _: text = timesforge.localisation.translate('creation.progress', language, channel = channel)
+
+    return _modal(timesforge.localisation.translate('creation.title', language), text, language)
 
 def _item(
     title: str,

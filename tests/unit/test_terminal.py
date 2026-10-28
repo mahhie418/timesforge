@@ -18,8 +18,9 @@ import timesforge.terminal
 CHANNELS_COUNT = 'SELECT count(*) FROM channel'
 
 ENVIRONMENTS_START = [
-    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1'}, 0, '', ['xapp-xxx']),
-    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID\n', [])
+    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxp-xxx', False)]),
+    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': '', 'TIMESFORGE_OWNER_ID': 'UXXX1'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxb-xxx', False)]),
+    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID\n', [], [])
 ]
 
 def prepare(
@@ -159,7 +160,7 @@ class TestTerminalCommandImport:
 
 class TestTerminalCommandStart:
 
-    @pytest.mark.parametrize(('environment', 'status', 'err', 'started'), ENVIRONMENTS_START)
+    @pytest.mark.parametrize(('environment', 'status', 'err', 'started', 'connected'), ENVIRONMENTS_START)
     def test_environment(
         self,
         tmp_path: pathlib.Path,
@@ -169,14 +170,20 @@ class TestTerminalCommandStart:
         environment: dict[str, str],
         status: int,
         err: str,
-        started: list[str]
+        started: list[str],
+        connected: list[tuple[str, bool]]
     ) -> None:
 
         tokens = []
+        connections = []
 
         def connect(
-            _: str
+            token: str,
+            *,
+            idempotent: bool = True
         ) -> slack_sdk.web.WebClient:
+
+            connections.append((token, idempotent))
 
             return slack
 
@@ -202,6 +209,7 @@ class TestTerminalCommandStart:
         assert timesforge.terminal.main(['start']) == status
         assert capsys.readouterr() == ('', err)
         assert tokens == started
+        assert connections == connected
 
     def test_lock(
         self,

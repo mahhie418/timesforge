@@ -1,6 +1,8 @@
 import collections.abc
+import dataclasses
 import datetime
 import json
+import threading
 import typing
 import unittest.mock
 
@@ -53,13 +55,22 @@ def recover(
 
 @pytest.fixture
 def registration(
+    monkeypatch: pytest.MonkeyPatch,
     slack: slack_sdk.web.WebClient,
+    writer: slack_sdk.web.WebClient,
     database: timesforge.storage.Database
 ) -> tuple[slack_bolt.App, collections.abc.Callable[[str, datetime.datetime], None]]:
 
-    application = slack_bolt.App(client = slack, process_before_response = True)
+    def detach(
+        function: collections.abc.Callable[[], None]
+    ) -> None:
 
-    return application, timesforge.slack.handler.register(application, timesforge.configuration.load({'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_LANGUAGE_DISPLAY': 'ja'}), database)
+        function()
+
+    application = slack_bolt.App(client = slack, process_before_response = True)
+    monkeypatch.setattr(timesforge.slack.handler, 'detach', detach)
+
+    return application, timesforge.slack.handler.register(application, timesforge.configuration.load({'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_LANGUAGE_DISPLAY': 'ja'}), database, writer)
 
 @pytest.fixture
 def registry(
@@ -204,7 +215,7 @@ def test_handler_creation_modal(
     assert press(application, 'UXXX2', timesforge.slack.view.CREATION_ACTION).status == 200
     assert calls(workspace, 'views.open') == [{'trigger_id': 'xxx', 'view': timesforge.slack.view.collect(language = 'ja')}]
 
-def test_handler_creation_reservation(
+def test_handler_channel_creation(
     application: slack_bolt.App,
     workspace: dict[str, typing.Any],
     database: timesforge.storage.Database
@@ -212,10 +223,43 @@ def test_handler_creation_reservation(
 
     response = submit(application, 'UXXX2', named(' Yyy '))
     requests = timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2')
+    reservation = dataclasses.replace(requests[0], status = 'reserved', channel_id = None)
 
-    assert json.loads(response.body) == {'response_action': 'update', 'view': timesforge.slack.view.approve(request = requests[0], language = 'ja')}
-    assert [(request.first_name, request.channel_name, request.status) for request in requests] == [('Yyy', 'times_yyy', 'reserved')]
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = requests[0], role = 'member', language = 'ja')}]
+    assert json.loads(response.body) == {'response_action': 'update', 'view': timesforge.slack.view.approve(request = reservation, language = 'ja')}
+    assert [(request.first_name, request.channel_name, request.status, request.channel_id) for request in requests] == [('Yyy', 'times_yyy', 'completed', 'CXXX3')]
+    assert workspace['members']['CXXX3'] == ['UXXX0', 'UXXXB', 'UXXX1', 'UXXX2', 'UXXX3', 'UXXX4']
+    assert calls(workspace, 'views.update') == [{'view_id': 'VXXX', 'view': timesforge.slack.view.report(request = requests[0], language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = reservation, role = 'member', language = 'ja')}, {'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = requests[0], role = 'member', language = 'ja')}]
+
+def test_handler_creation_failure(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    workspace['failures'] = ['restricted_action']
+
+    submit(application, 'UXXX2', named('Yyy'))
+    requests = timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2')
+
+    assert [(request.status, request.error) for request in requests] == [('failed', 'restricted_action')]
+    assert calls(workspace, 'views.update') == [{'view_id': 'VXXX', 'view': timesforge.slack.view.report(request = requests[0], language = 'ja')}]
+    assert calls(workspace, 'views.publish')[-1] == {'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = requests[0], role = 'member', language = 'ja')}
+
+def test_handler_modal_closure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    application: slack_bolt.App,
+    slack: slack_sdk.web.WebClient,
+    database: timesforge.storage.Database
+) -> None:
+
+    monkeypatch.setattr(slack, 'views_update', unittest.mock.Mock(side_effect = slack_sdk.errors.SlackApiError('xxx', 'xxx')))
+
+    submit(application, 'UXXX2', named('Yyy'))
+
+    assert 'Modal not updated' in caplog.text
+    assert [request.status for request in timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2')] == ['completed']
 
 @pytest.mark.parametrize(('first_name', 'reason'), NAMES_INVALID)
 def test_handler_name_invalid(
@@ -275,3 +319,19 @@ def test_handler_guest_refusal(
     assert timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX5') == []
     assert home(application, 'UXXX5', 'home').status == 200
     assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX5', 'view': timesforge.slack.view.home(refusal = None, eligible = False, request = None, role = 'member', language = 'ja')}]
+
+def test_handler_thread_detachment() -> None:
+
+    threads: list[threading.Thread] = []
+    started = threading.Event()
+
+    def run() -> None:
+
+        threads.append(threading.current_thread())
+        started.set()
+
+    timesforge.slack.handler.detach(run)
+
+    assert started.wait(5)
+    assert threads[0] is not threading.current_thread()
+    assert threads[0].daemon
