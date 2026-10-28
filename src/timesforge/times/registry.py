@@ -18,6 +18,7 @@ _CHANNEL_INSERT = 'INSERT INTO channel (workspace_id, channel_id, holder_id, fir
 _CHANNEL_ARCHIVE = "UPDATE channel SET channel_status = 'archived', archive_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'active' RETURNING holder_id"
 _CHANNEL_UNARCHIVE = "UPDATE channel SET channel_status = 'active', archive_time = NULL, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status = 'archived' RETURNING holder_id"
 _CHANNEL_RENAME = "UPDATE channel SET channel_name = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' AND channel_name != ? RETURNING holder_id"
+_CHANNEL_REASSIGN = 'UPDATE channel SET holder_id = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ?'
 _CHANNEL_DELETE = "UPDATE channel SET channel_status = 'deleted', delete_time = ?, update_time = ? WHERE workspace_id = ? AND channel_id = ? AND channel_status != 'deleted' RETURNING holder_id"
 
 class ChannelDuplicateError(Exception):
@@ -265,6 +266,47 @@ class RegistryIO:
         """
 
         return self._update(_CHANNEL_DELETE, (now.isoformat(), now.isoformat(), workspace_id, channel_id), workspace_id, timesforge.times.history.Entry(action = 'delete', actor_id = actor_id, channel_id = channel_id, creation = now))
+
+    def reassign(
+        self,
+        workspace_id: str,
+        channel_id: str,
+        holder_id: str,
+        *,
+        owner_id: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Gives a times channel another holder, as when the owner corrects the holder of an imported channel.
+
+        The change goes into the history with the former holder.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            channel_id: Slack channel ID.
+            holder_id: Slack user ID of the new holder.
+            owner_id: Slack user ID of the owner.
+            now: The current time.
+
+        Returns:
+            Whether the holder changed; False when the channel is not a times
+            channel, or the member holds it already.
+
+        Raises:
+            ChannelDuplicateError: The member holds another times channel that
+                                   is not deleted, and this one is not deleted either.
+        """
+
+        with self._database.begin() as connection:
+
+            if (row := connection.execute(_CHANNEL_SELECT, (workspace_id, channel_id)).fetchone()) is None or row['holder_id'] == holder_id: return False
+
+            try: connection.execute(_CHANNEL_REASSIGN, (holder_id, now.isoformat(), workspace_id, channel_id))
+            except sqlite3.IntegrityError: raise ChannelDuplicateError(f'{holder_id} holds a times channel') from None
+
+            timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'reassign', actor_id = owner_id, target_id = holder_id, channel_id = channel_id, details = {'holder': row['holder_id']}, creation = now))
+
+            return True
 
     def _update(
         self,

@@ -17,6 +17,7 @@ CREATION = datetime.datetime(2026, 10, 26, 15, 0, tzinfo = datetime.UTC)
 CHANGE = CREATION + datetime.timedelta(minutes = 1)
 
 FAILURES_RECOVERED = [['lost'], ['dropped'], [500]]
+STATUSES_RESUMED = ['reserved', 'reconciling', 'created', 'inviting']
 
 @pytest.fixture
 def requests(
@@ -49,6 +50,29 @@ def names(
 ) -> list[str]:
 
     return [channel['name'] for channel in workspace['channels']]
+
+def leave(
+    requests: timesforge.times.request.RequestIO,
+    writer: slack_sdk.web.WebClient,
+    status: timesforge.times.request.Status
+) -> int:
+
+    request_id = reserve(requests)
+
+    if status == 'reserved': return request_id
+
+    requests.start('TXXX', request_id, CREATION)
+
+    if status == 'reconciling': requests.lose('TXXX', request_id, error = 'xxx', now = CREATION); return request_id
+
+    channel = writer.conversations_create(name = 'times_yyy', is_private = False).get('channel', {})
+    registration = timesforge.times.registry.Channel(channel_id = channel['id'], holder_id = 'UXXX1', first_name = 'Yyy', channel_name = 'times_yyy', creation = CREATION)
+
+    requests.finish('TXXX', request_id, registration, creator_id = 'UXXX0', now = CREATION)
+
+    if status == 'inviting': requests.advance('TXXX', request_id, CREATION)
+
+    return request_id
 
 def test_creation_channel_success(
     database: timesforge.storage.Database,
@@ -143,6 +167,37 @@ def test_creation_request_busy(
     assert request.status == 'creating'
     assert creator.reconcile(request_id, CHANGE) == request
     assert creator.create(request_id + 1, CHANGE) is None
+    assert names(workspace) == ['times_xxx', 'xxx']
+
+@pytest.mark.parametrize('status', STATUSES_RESUMED)
+def test_creation_request_resumption(
+    workspace: dict[str, typing.Any],
+    writer: slack_sdk.web.WebClient,
+    requests: timesforge.times.request.RequestIO,
+    creator: timesforge.slack.creation.Creator,
+    status: timesforge.times.request.Status
+) -> None:
+
+    request = creator.resume(leave(requests, writer, status), CHANGE)
+
+    assert request is not None
+    assert (request.status, request.channel_id) == ('completed', 'CXXX3')
+    assert names(workspace) == ['times_xxx', 'xxx', 'times_yyy']
+    assert workspace['members']['CXXX3'] == ['UXXX0', 'UXXXB', 'UXXX1', 'UXXX2', 'UXXX3', 'UXXX4']
+
+def test_creation_resumption_busy(
+    workspace: dict[str, typing.Any],
+    requests: timesforge.times.request.RequestIO,
+    creator: timesforge.slack.creation.Creator
+) -> None:
+
+    requests.start('TXXX', request_id := reserve(requests), CREATION)
+
+    request = creator.resume(request_id, CHANGE)
+
+    assert request is not None
+    assert request.status == 'creating'
+    assert creator.resume(request_id + 1, CHANGE) is None
     assert names(workspace) == ['times_xxx', 'xxx']
 
 def test_creation_grant_consumption(

@@ -4,6 +4,7 @@ import datetime
 import pytest
 
 import timesforge.storage
+import timesforge.times.history
 import timesforge.times.registry
 
 CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
@@ -151,6 +152,27 @@ def test_registry_holder_duplicated(
     store.save('TYYY', create('CXXX3', 'UXXX1'))
 
     assert [channel.channel_id for channel in store.find('TXXX', 'UXXX1')] == ['CXXX1', 'CXXX2']
+
+def test_registry_holder_reassignment(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.registry.RegistryIO(database)
+
+    for channel in (create('CXXX1', 'UXXX1'), create('CXXX2', 'UXXX2')): store.save('TXXX', channel)
+
+    with pytest.raises(timesforge.times.registry.ChannelDuplicateError): store.reassign('TXXX', 'CXXX1', 'UXXX2', owner_id = 'UXXX0', now = CHANGE)
+
+    assert not store.reassign('TXXX', 'CXXX1', 'UXXX1', owner_id = 'UXXX0', now = CHANGE)
+    assert not store.reassign('TXXX', 'CXXX3', 'UXXX3', owner_id = 'UXXX0', now = CHANGE)
+    assert store.reassign('TXXX', 'CXXX1', 'UXXX3', owner_id = 'UXXX0', now = CHANGE)
+    assert [channel.channel_id for channel in store.find('TXXX', 'UXXX3')] == ['CXXX1']
+    assert store.find('TXXX', 'UXXX1') == []
+    assert timesforge.times.history.HistoryIO(database).load('TXXX', 1) == [timesforge.times.history.Entry(action = 'reassign', actor_id = 'UXXX0', target_id = 'UXXX3', channel_id = 'CXXX1', details = {'holder': 'UXXX1'}, creation = CHANGE)]
+
+    store.delete('TXXX', 'CXXX2', CHANGE)
+
+    assert store.reassign('TXXX', 'CXXX2', 'UXXX3', owner_id = 'UXXX0', now = CHANGE)
 
 def test_registry_workspace_scan(
     database: timesforge.storage.Database

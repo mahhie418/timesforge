@@ -14,6 +14,7 @@ type Reason = typing.Literal['excluded', 'holder', 'grant', 'right']
 
 _GRANT_SELECT = 'SELECT grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, reserve_time, consume_time, channel_id FROM recreation WHERE workspace_id = ? AND user_id = ? ORDER BY grant_id'
 _OPEN_SELECT = "SELECT 1 FROM recreation WHERE workspace_id = ? AND user_id = ? AND grant_status IN ('unused', 'reserved')"
+_WORKSPACE_SELECT = "SELECT grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, reserve_time, consume_time, channel_id FROM recreation WHERE workspace_id = ? AND grant_status IN ('unused', 'reserved') ORDER BY grant_id"
 _GRANT_INSERT = "INSERT INTO recreation (workspace_id, user_id, grant_status, grant_user, grant_time) VALUES (?, ?, 'unused', ?, ?) RETURNING grant_id, user_id, grant_status, grant_user, grant_time, revoke_time, reserve_time, consume_time, channel_id"
 _GRANT_REVOKE = "UPDATE recreation SET grant_status = 'revoked', revoke_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused'"
 _GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE workspace_id = ? AND user_id = ? AND grant_status IN ('unused', 'reserved')"
@@ -109,6 +110,22 @@ class RecreationIO:
         """
 
         return [_decode(row) for row in self._database.connect().execute(_GRANT_SELECT, (workspace_id, user_id))]
+
+    def scan(
+        self,
+        workspace_id: str
+    ) -> list[Grant]:
+
+        """Lists the recreation grants of a workspace that are not used up.
+
+        Args:
+            workspace_id: Slack workspace ID.
+
+        Returns:
+            The grants that are unused or reserved, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_WORKSPACE_SELECT, (workspace_id,))]
 
     def grant(
         self,

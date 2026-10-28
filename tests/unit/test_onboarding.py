@@ -69,6 +69,32 @@ def test_onboarding_message_loss(
     assert store.load('TXXX', 'UXXX1') == dataclasses.replace(PENDING, status = 'unknown', error = 'xxx')
     assert store.succeed('TXXX', 'UXXX1', conversation_id = 'DXXX', message_ts = '1.2', now = CHANGE)
 
+def test_onboarding_message_update(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.onboarding.OnboardingIO(database); claim(store)
+    store.send('TXXX', 'UXXX1', CHANGE)
+
+    assert not store.update('TXXX', 'UXXX1', CHANGE)
+    assert store.succeed('TXXX', 'UXXX1', conversation_id = 'DXXX', message_ts = '1.2', now = CHANGE)
+    assert store.update('TXXX', 'UXXX1', CHANGE)
+    assert store.update('TXXX', 'UXXX1', CHANGE)
+    assert store.load('TXXX', 'UXXX1') == dataclasses.replace(PENDING, status = 'updated', conversation_id = 'DXXX', message_ts = '1.2', delivery = CHANGE)
+
+def test_onboarding_workspace_scan(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.onboarding.OnboardingIO(database)
+
+    claim(store)
+    store.claim('TXXX', 'UXXX2', channel_id = 'CXXX1', event_id = 'EvXXX2', now = CHANGE); store.send('TXXX', 'UXXX2', CHANGE)
+    claim(store, workspace_id = 'TYYY')
+
+    assert store.scan('TXXX', ['pending']) == [PENDING]
+    assert [message.user_id for message in store.scan('TXXX', ['pending', 'sending'])] == ['UXXX1', 'UXXX2']
+
 def test_onboarding_restart_persistence(
     database: timesforge.storage.Database
 ) -> None:

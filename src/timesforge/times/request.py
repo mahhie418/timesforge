@@ -1,7 +1,9 @@
 """Requests for times channels, reserved so that no two of them create the same channel."""
 
+import collections.abc
 import dataclasses
 import datetime
+import json
 import sqlite3
 import typing
 
@@ -14,6 +16,8 @@ import timesforge.times.registry
 type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 'reconciling', 'created', 'inviting', 'completed', 'failed']
 
 _REQUEST_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_id = ?'
+_USER_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? ORDER BY request_id'
+_STATUS_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_status IN (SELECT value FROM json_each(?)) ORDER BY request_id'
 _OPEN_SELECT = "SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution', 'creating', 'reconciling')"
 _NAME_SELECT = "SELECT 1 FROM channel WHERE workspace_id = ? AND channel_name = ? AND channel_status != 'deleted' UNION ALL SELECT 1 FROM request WHERE workspace_id = ? AND channel_name = ? AND request_status IN ('reserved', 'creating', 'reconciling')"
 _GRANT_RESERVE = "UPDATE recreation SET grant_status = 'reserved', reserve_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused' RETURNING grant_id"
@@ -26,6 +30,8 @@ _REQUEST_FAIL = "UPDATE request SET request_status = 'failed', error_message = ?
 _REQUEST_FINISH = "UPDATE request SET request_status = 'created', channel_id = ?, error_message = NULL, update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status IN ('creating', 'reconciling') RETURNING user_id, grant_id"
 _REQUEST_ADVANCE = "UPDATE request SET request_status = 'inviting', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'created'"
 _REQUEST_COMPLETE = "UPDATE request SET request_status = 'completed', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'inviting'"
+_REQUEST_RESOLVE = "UPDATE request SET channel_name = ?, request_status = 'reserved', update_time = ? WHERE workspace_id = ? AND request_id = ? AND request_status = 'pending_name_resolution' RETURNING request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time"
+_REQUEST_WITHDRAW = "UPDATE request SET request_status = 'failed', error_message = ?, update_time = ? WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution') RETURNING grant_id"
 _GRANT_RELEASE = "UPDATE recreation SET grant_status = 'unused', reserve_time = NULL WHERE grant_id = ? AND grant_status = 'reserved'"
 _GRANT_CONSUME = "UPDATE recreation SET grant_status = 'consumed', consume_time = ?, channel_id = ? WHERE grant_id = ? AND grant_status = 'reserved'"
 
@@ -51,6 +57,10 @@ class RequestRefusedError(Exception):
         super().__init__(f'The member may not create a times channel: {refusal}')
 
         self.refusal = refusal
+
+class NameTakenError(Exception):
+
+    """Raised when a times channel that is not deleted, or another open request, has the name that the owner chose."""
 
 @dataclasses.dataclass(frozen = True, slots = True, kw_only = True)
 class Request:
@@ -119,6 +129,42 @@ class RequestIO:
         row = self._database.connect().execute(_REQUEST_SELECT, (workspace_id, request_id)).fetchone()
 
         return None if row is None else _decode(row)
+
+    def find(
+        self,
+        workspace_id: str,
+        user_id: str
+    ) -> list[Request]:
+
+        """Finds the requests of a member.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+
+        Returns:
+            The requests, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_USER_SELECT, (workspace_id, user_id))]
+
+    def scan(
+        self,
+        workspace_id: str,
+        statuses: collections.abc.Collection[Status]
+    ) -> list[Request]:
+
+        """Lists the requests of a workspace in some statuses.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            statuses: The statuses.
+
+        Returns:
+            The requests, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_STATUS_SELECT, (workspace_id, json.dumps(sorted(statuses))))]
 
     def reserve(
         self,
@@ -370,6 +416,81 @@ class RequestIO:
         """
 
         with self._database.begin() as connection: return connection.execute(_REQUEST_COMPLETE, (now.isoformat(), workspace_id, request_id)).rowcount == 1
+
+    def resolve(
+        self,
+        workspace_id: str,
+        request_id: int,
+        name: str,
+        *,
+        owner_id: str,
+        now: datetime.datetime
+    ) -> Request | None:
+
+        """Gives a request that waits for the owner the name that the owner chose, and reserves its channel.
+
+        The name is checked as a first name is, and the member who asked
+        still holds the channel. The change goes into the history.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            request_id: ID of the request.
+            name: Part of the name of the channel after `timesforge.times.naming.PREFIX`.
+            owner_id: Slack user ID of the owner.
+            now: The current time.
+
+        Returns:
+            The reserved request, or None when the request does not wait for the owner.
+
+        Raises:
+            timesforge.times.naming.NameInvalidError: The name cannot make the
+                                                      name of a times channel.
+            NameTakenError: A times channel that is not deleted, or another
+                            open request, has the name.
+        """
+
+        channel_name = timesforge.times.naming.sanitise(name)
+
+        with self._database.begin() as connection:
+
+            if connection.execute(_NAME_SELECT, (workspace_id, channel_name, workspace_id, channel_name)).fetchone() is not None: raise NameTakenError(f'{channel_name} is taken')
+            if (row := connection.execute(_REQUEST_RESOLVE, (channel_name, now.isoformat(), workspace_id, request_id)).fetchone()) is None: return None
+
+            timesforge.times.history.record(connection, workspace_id, timesforge.times.history.Entry(action = 'resolve', actor_id = owner_id, target_id = row['user_id'], details = {'channel_name': channel_name}, creation = now))
+
+            return _decode(row)
+
+    def withdraw(
+        self,
+        workspace_id: str,
+        user_id: str,
+        *,
+        error: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Withdraws the request of a member that waits to be created or for the owner, as when the owner excludes the member.
+
+        The request fails, and its recreation grant, if it has one, becomes
+        unused again. A request being created is left to finish.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+            error: Why the request was withdrawn.
+            now: The current time.
+
+        Returns:
+            Whether the member had a request that was reserved or pending.
+        """
+
+        with self._database.begin() as connection:
+
+            if (row := connection.execute(_REQUEST_WITHDRAW, (error, now.isoformat(), workspace_id, user_id)).fetchone()) is None: return False
+
+            connection.execute(_GRANT_RELEASE, (row['grant_id'],))
+
+            return True
 
 def _decode(
     row: sqlite3.Row

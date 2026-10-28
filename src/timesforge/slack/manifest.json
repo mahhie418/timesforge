@@ -1,0 +1,45 @@
+{
+  "display_information": {
+    "description": "Creates a times channel for each member from App Home.",
+    "name": "timesforge"
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": true
+    },
+    "bot_user": {
+      "display_name": "timesforge"
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:manage",
+        "channels:read",
+        "chat:write",
+        "im:history",
+        "im:write",
+        "users:read"
+      ],
+      "user": [
+        "channels:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_home_opened",
+        "channel_archive",
+        "channel_deleted",
+        "channel_rename",
+        "channel_unarchive",
+        "member_joined_channel"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "socket_mode_enabled": true
+  }
+}
