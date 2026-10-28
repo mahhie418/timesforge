@@ -22,6 +22,7 @@ import timesforge.times.exclusion
 import timesforge.times.invitation
 import timesforge.times.naming
 import timesforge.times.policy
+import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
 
@@ -59,9 +60,10 @@ def register(
     is looked for in Slack before it is created once more.
 
     Only the owner excludes members from creating times channels and lets
-    them create one again, as `timesforge.slack.permission.restrict` makes
-    sure. Excluding a member withdraws their request that waits to be created
-    or for the owner, and the App Home of the member shows the change.
+    them create one again, and gives and revokes recreation grants, as
+    `timesforge.slack.permission.restrict` makes sure. Excluding a member
+    withdraws their request that waits to be created or for the owner, and
+    the App Home of the member shows each change.
 
     Args:
         application: The application.
@@ -83,6 +85,7 @@ def register(
     requests = timesforge.times.request.RequestIO(database)
     invitations = timesforge.times.invitation.InvitationIO(database)
     exclusions = timesforge.times.exclusion.ExclusionIO(database)
+    recreations = timesforge.times.recreation.RecreationIO(database)
     guard = [timesforge.slack.permission.restrict(settings)]
 
     def inspect(
@@ -109,7 +112,7 @@ def register(
         eligible, language = inspect(user)
         role = timesforge.slack.permission.role(settings, user)
 
-        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), exclusions = exclusions.find(team) if role == 'owner' else [], role = role, language = language))
+        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), exclusions = exclusions.find(team) if role == 'owner' else [], grants = recreations.scan(team) if role == 'owner' else [], role = role, language = language))
 
     def show(
         modal: str,
@@ -284,6 +287,50 @@ def register(
 
         for person in dict.fromkeys([owner, user]): refresh(team, person)
 
+    def offer(
+        ack: slack_bolt.Ack,
+        body: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        ack()
+
+        if context.team_id is None or context.user_id is None: return
+
+        application.client.views_open(trigger_id = body['trigger_id'], view = timesforge.slack.view.grant(grants = recreations.scan(context.team_id), language = choose(context.user_id)))
+
+    def grant(
+        ack: slack_bolt.Ack,
+        view: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        team, owner = context.team_id, context.user_id
+
+        if team is None or owner is None: return
+
+        values = view['state']['values']
+        user = values[timesforge.slack.view.MEMBER_INPUT][timesforge.slack.view.MEMBER_INPUT]['selected_user']
+        choice = values[timesforge.slack.view.CHOICE_INPUT][timesforge.slack.view.CHOICE_INPUT]['selected_option']['value']
+        language, now = choose(owner), datetime.datetime.now(datetime.UTC)
+
+        reason = None
+
+        try:
+
+            if choice == 'grant': recreations.grant(team, user, owner_id = owner, now = now)
+            elif not recreations.revoke(team, user, owner_id = owner, now = now): reason = 'revoke'
+
+        except timesforge.times.recreation.GrantInvalidError as error:
+
+            reason = error.reason
+
+        if reason is not None: ack(response_action = 'errors', errors = {timesforge.slack.view.MEMBER_INPUT: timesforge.localisation.translate(f'recreation.error.{reason}', language)}); return
+
+        ack()
+
+        for person in dict.fromkeys([owner, user]): refresh(team, person)
+
     application.event('app_home_opened')(publish)
     application.event('channel_archive')(follow)
     application.event('channel_deleted')(follow)
@@ -293,6 +340,8 @@ def register(
     application.view(timesforge.slack.view.CREATION_CALLBACK)(reserve)
     application.action(timesforge.slack.view.EXCLUSION_ACTION, middleware = guard)(manage)
     application.view(timesforge.slack.view.EXCLUSION_CALLBACK, middleware = guard)(exclude)
+    application.action(timesforge.slack.view.RECREATION_ACTION, middleware = guard)(offer)
+    application.view(timesforge.slack.view.RECREATION_CALLBACK, middleware = guard)(grant)
 
     return recover
 

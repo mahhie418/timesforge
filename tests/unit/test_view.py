@@ -7,6 +7,7 @@ import timesforge.slack.permission
 import timesforge.slack.view
 import timesforge.times.exclusion
 import timesforge.times.policy
+import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
 
@@ -53,6 +54,8 @@ EXCLUSIONS_LISTED = [
     timesforge.times.exclusion.Exclusion(user_id = 'UXXX3', reason = 'yyy', owner_id = 'UXXX1', creation = CREATION)
 ]
 
+GRANTS_LISTED = [timesforge.times.recreation.Grant(grant_id = 1, user_id = 'UXXX4', status = 'unused', owner_id = 'UXXX1', granting = CREATION)]
+
 ROLES_MESSAGE = [
     ('owner', ['You are the owner.']),
     ('member', [])
@@ -67,7 +70,7 @@ def test_view_home_status(
     actions: list[str]
 ) -> None:
 
-    view = timesforge.slack.view.home(refusal = refusal, eligible = True, request = reservation, channels = [], exclusions = [], role = 'member', language = language)
+    view = timesforge.slack.view.home(refusal = refusal, eligible = True, request = reservation, channels = [], exclusions = [], grants = [], role = 'member', language = language)
 
     assert view['type'] == 'home'
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'section'] == texts
@@ -75,23 +78,23 @@ def test_view_home_status(
 
 def test_view_home_guest() -> None:
 
-    view = timesforge.slack.view.home(refusal = None, eligible = False, request = None, channels = [], exclusions = [], role = 'member', language = 'en')
+    view = timesforge.slack.view.home(refusal = None, eligible = False, request = None, channels = [], exclusions = [], grants = [], role = 'member', language = 'en')
 
     assert [(block['text']['text'], 'accessory' in block) for block in view['blocks']] == [('*times channel*\nOnly members can create one.', False)]
 
 def test_view_home_channels() -> None:
 
-    view = timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = CHANNELS_HELD, exclusions = [], role = 'member', language = 'en')
+    view = timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = CHANNELS_HELD, exclusions = [], grants = [], role = 'member', language = 'en')
 
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'section'][1:] == ['*Your times channels*\n#times_xxx (deleted <!date^1793199600^{date_short}|2026-10-28>)\n<#CXXX2> (archived <!date^1793199600^{date_short}|2026-10-28>)\n<#CXXX3> (created <!date^1793199600^{date_short}|2026-10-28>)']
 
 def test_view_home_owner() -> None:
 
-    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, role = 'owner', language = 'en')
-    member = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, role = 'member', language = 'en')
+    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, grants = GRANTS_LISTED, role = 'owner', language = 'en')
+    member = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, grants = GRANTS_LISTED, role = 'member', language = 'en')
 
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'header'] == ['Owner actions']
-    assert [(block['text']['text'], block['accessory']['action_id']) for block in view['blocks'] if block['type'] == 'section'][1:] == [('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION)]
+    assert [(block['text']['text'], block['accessory']['action_id']) for block in view['blocks'] if block['type'] == 'section'][1:] == [('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION)]
     assert [block['type'] for block in member['blocks']] == ['section']
 
 def test_view_exclusion_modal() -> None:
@@ -104,13 +107,21 @@ def test_view_exclusion_modal() -> None:
     assert empty['blocks'][0]['text']['text'] == 'No member is excluded.'
     assert [block['block_id'] for block in view['blocks'] if block['type'] == 'input'] == [timesforge.slack.view.MEMBER_INPUT, timesforge.slack.view.CHOICE_INPUT, timesforge.slack.view.REASON_INPUT]
 
+def test_view_recreation_modal() -> None:
+
+    view = timesforge.slack.view.grant(grants = GRANTS_LISTED, language = 'en')
+
+    assert view['callback_id'] == timesforge.slack.view.RECREATION_CALLBACK
+    assert view['blocks'][0]['text']['text'].endswith('\n<@UXXX4>')
+    assert [block['block_id'] for block in view['blocks'] if block['type'] == 'input'] == [timesforge.slack.view.MEMBER_INPUT, timesforge.slack.view.CHOICE_INPUT]
+
 @pytest.mark.parametrize(('role', 'texts'), ROLES_MESSAGE)
 def test_view_home_role(
     role: timesforge.slack.permission.Role,
     texts: list[str]
 ) -> None:
 
-    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], role = role, language = 'en')
+    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], grants = [], role = role, language = 'en')
 
     assert [element['text'] for block in view['blocks'] if block['type'] == 'context' for element in block['elements']] == texts
 

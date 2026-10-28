@@ -59,6 +59,21 @@ def test_recreation_grant_refusal(
 
     assert exception.value.reason == expected
 
+def test_recreation_workspace_scan(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1').delete('TXXX', 'CXXX1', CREATION)
+    register(database, 'CXXX2', 'UXXX2').delete('TXXX', 'CXXX2', CREATION)
+
+    store = timesforge.times.recreation.RecreationIO(database)
+
+    grant = store.grant('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CHANGE)
+    store.grant('TXXX', 'UXXX2', owner_id = 'UXXX0', now = CHANGE); store.revoke('TXXX', 'UXXX2', owner_id = 'UXXX0', now = CHANGE)
+
+    assert store.scan('TXXX') == [grant]
+    assert store.scan('TYYY') == []
+
 def test_recreation_grant_consumption(
     database: timesforge.storage.Database
 ) -> None:

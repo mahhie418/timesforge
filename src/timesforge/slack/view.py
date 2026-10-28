@@ -9,6 +9,7 @@ import timesforge.slack.permission
 import timesforge.times.exclusion
 import timesforge.times.naming
 import timesforge.times.policy
+import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
 
@@ -16,6 +17,8 @@ CREATION_ACTION = 'creation_action'
 CREATION_CALLBACK = 'creation_callback'
 EXCLUSION_ACTION = 'exclusion_action'
 EXCLUSION_CALLBACK = 'exclusion_callback'
+RECREATION_ACTION = 'recreation_action'
+RECREATION_CALLBACK = 'recreation_callback'
 
 NAME_INPUT = 'name_input'
 MEMBER_INPUT = 'member_input'
@@ -29,6 +32,7 @@ def home(
     request: timesforge.times.request.Request | None,
     channels: list[timesforge.times.registry.Channel],
     exclusions: list[timesforge.times.exclusion.Exclusion],
+    grants: list[timesforge.times.recreation.Grant],
     role: timesforge.slack.permission.Role,
     language: timesforge.configuration.Language
 ) -> dict[str, typing.Any]:
@@ -43,7 +47,8 @@ def home(
     are listed with the day when each was created, archived or deleted, and
     each that is not deleted links to the channel. The owner also sees their
     own role and, under a heading, the members excluded from creating times
-    channels, with a button that changes them.
+    channels and those with recreation grants that are not used up, each
+    with a button that changes them.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
@@ -51,6 +56,7 @@ def home(
         request: The latest request of the viewer, or None when they never asked.
         channels: Times channels that the viewer holds or held, oldest first.
         exclusions: Members excluded from creating times channels, which only the owner sees.
+        grants: Recreation grants that are not used up, which only the owner sees.
         role: Role of the viewer.
         language: Language of the viewer.
 
@@ -80,6 +86,7 @@ def home(
 
         blocks.extend([{'type': 'divider'}, _heading(timesforge.localisation.translate('home.heading.owner', language))])
         blocks.append(_item(timesforge.localisation.translate('home.exclusions', language), ', '.join(f'<@{exclusion.user_id}>' for exclusion in exclusions) or timesforge.localisation.translate('home.exclusions.none', language), _action(EXCLUSION_ACTION, timesforge.localisation.translate('home.exclusions.action', language))))
+        blocks.append(_item(timesforge.localisation.translate('home.recreations', language), ', '.join(f'<@{grant.user_id}>' for grant in grants) or timesforge.localisation.translate('home.recreations.none', language), _action(RECREATION_ACTION, timesforge.localisation.translate('home.recreations.action', language))))
 
     return {'type': 'home', 'blocks': blocks}
 
@@ -182,6 +189,35 @@ def exclude(
     ]
 
     return {'type': 'modal', 'callback_id': EXCLUSION_CALLBACK, 'title': _plain(timesforge.localisation.translate('exclusion.title', language)), 'submit': _plain(timesforge.localisation.translate('exclusion.submit', language)), 'close': _plain(timesforge.localisation.translate('exclusion.close', language)), 'blocks': blocks}
+
+def grant(
+    *,
+    grants: list[timesforge.times.recreation.Grant],
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal in which the owner gives a member a recreation grant, or revokes their unused one.
+
+    The members with grants that are not used up are listed.
+
+    Args:
+        grants: Recreation grants that are not used up.
+        language: Language of the owner.
+
+    Returns:
+        The view, as views.open takes it.
+    """
+
+    users = ', '.join(f'<@{grant.user_id}>' for grant in grants) or timesforge.localisation.translate('recreation.none', language)
+    choices = {choice: {'text': _plain(timesforge.localisation.translate(f'recreation.choice.{choice}', language)), 'value': choice} for choice in ('grant', 'revoke')}
+
+    blocks = [
+        {'type': 'section', 'text': {'type': 'mrkdwn', 'text': f"{timesforge.localisation.translate('recreation.description', language)}\n{users}"}},
+        {'type': 'input', 'block_id': MEMBER_INPUT, 'label': _plain(timesforge.localisation.translate('recreation.member', language)), 'element': {'type': 'users_select', 'action_id': MEMBER_INPUT}},
+        {'type': 'input', 'block_id': CHOICE_INPUT, 'label': _plain(timesforge.localisation.translate('recreation.choice', language)), 'element': {'type': 'radio_buttons', 'action_id': CHOICE_INPUT, 'options': list(choices.values()), 'initial_option': choices['grant']}}
+    ]
+
+    return {'type': 'modal', 'callback_id': RECREATION_CALLBACK, 'title': _plain(timesforge.localisation.translate('recreation.title', language)), 'submit': _plain(timesforge.localisation.translate('recreation.submit', language)), 'close': _plain(timesforge.localisation.translate('recreation.close', language)), 'blocks': blocks}
 
 def _describe(
     channel: timesforge.times.registry.Channel,
