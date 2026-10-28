@@ -16,6 +16,9 @@
       "bot": [
         "channels:manage",
         "channels:read",
+        "chat:write",
+        "im:history",
+        "im:write",
         "users:read"
       ],
       "user": [
@@ -30,7 +33,8 @@
         "channel_archive",
         "channel_deleted",
         "channel_rename",
-        "channel_unarchive"
+        "channel_unarchive",
+        "member_joined_channel"
       ]
     },
     "interactivity": {

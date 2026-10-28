@@ -112,5 +112,8 @@
   "review.member": "新しい保持者",
   "review.none": "取り込んだ times チャンネルはありません。",
   "review.submit": "保持者を変更",
-  "review.title": "取り込んだチャンネル"
+  "review.title": "取り込んだチャンネル",
+  "welcome.action": "times を作成する",
+  "welcome.body": "{workspace} では、あなた専用の公開チャンネル `#times_(First Name)` を作成できます。\nFirst Name を入力するだけで、{product} がチャンネルを自動作成し、Workspace のメンバーを招待します。\n作成できるのは原則1人1回です。",
+  "welcome.title": "{workspace} へようこそ！"
 }

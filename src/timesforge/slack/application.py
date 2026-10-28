@@ -27,7 +27,8 @@ def build(
     client: slack_sdk.web.WebClient,
     settings: timesforge.configuration.Settings,
     database: timesforge.storage.Database,
-    writer: slack_sdk.web.WebClient
+    writer: slack_sdk.web.WebClient,
+    sender: slack_sdk.web.WebClient
 ) -> tuple[slack_bolt.App, collections.abc.Callable[[str, datetime.datetime], None]]:
 
     """Builds the Slack app with its listeners.
@@ -37,6 +38,7 @@ def build(
         settings: Settings of the deployment.
         database: Database with the times channels of each workspace.
         writer: Slack client that creates the times channels and sends no request twice.
+        sender: Slack client with the bot token that sends the welcome messages and sends no request twice.
 
     Returns:
         The app, and the function that catches up with what changed in Slack
@@ -48,7 +50,7 @@ def build(
 
     application = slack_bolt.App(token = client.token, client = client)
 
-    return application, timesforge.slack.handler.register(application, settings, database, writer)
+    return application, timesforge.slack.handler.register(application, settings, database, writer, sender)
 
 @contextlib.contextmanager
 def lock(
@@ -114,7 +116,8 @@ def serve(
 
             client = timesforge.slack.api.connect(settings.slack_bot_token)
             writer = timesforge.slack.api.connect(settings.slack_user_token or settings.slack_bot_token, idempotent = False)
-            application, recover = build(client, settings, database, writer)
+            sender = timesforge.slack.api.connect(settings.slack_bot_token, idempotent = False)
+            application, recover = build(client, settings, database, writer, sender)
             start(application, settings.slack_app_token, recover)
 
         finally:

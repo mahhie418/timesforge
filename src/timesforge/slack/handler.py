@@ -17,11 +17,13 @@ import timesforge.slack.invitation
 import timesforge.slack.permission
 import timesforge.slack.reconciliation
 import timesforge.slack.view
+import timesforge.slack.welcome
 import timesforge.storage
 import timesforge.times.exclusion
 import timesforge.times.history
 import timesforge.times.invitation
 import timesforge.times.naming
+import timesforge.times.onboarding
 import timesforge.times.policy
 import timesforge.times.recreation
 import timesforge.times.registry
@@ -35,7 +37,8 @@ def register(
     application: slack_bolt.App,
     settings: timesforge.configuration.Settings,
     database: timesforge.storage.Database,
-    writer: slack_sdk.web.WebClient
+    writer: slack_sdk.web.WebClient,
+    sender: slack_sdk.web.WebClient
 ) -> collections.abc.Callable[[str, datetime.datetime], None]:
 
     """Registers the listeners of the app.
@@ -73,6 +76,14 @@ def register(
     channels and corrects them, and reads the latest `HISTORY_LIMIT` changes
     in the history.
 
+    A member who joins the channel in TIMESFORGE_CHANNEL_ID_WELCOME, such as
+    #welcome, gets one direct message from the bot that tells them how to
+    create their times channel and links to the App Home, as
+    `timesforge.slack.welcome.Greeter` makes sure, unless they are a guest,
+    are excluded, or have ever asked for or held a times channel. The
+    messages whose results the app left unknown when it stopped are looked
+    for in the background once it starts again.
+
     Args:
         application: The application.
         settings: Settings of the deployment.
@@ -80,13 +91,16 @@ def register(
         writer: Slack client that creates the times channels and sends no
                 request twice (see `timesforge.slack.api.connect`): with the
                 user token of an admin, or else with the bot token.
+        sender: Slack client with the bot token that sends the welcome
+                messages and sends no request twice.
 
     Returns:
         The function that catches up with what happened while the app was
         stopped, given the workspace ID and the current time: it brings the
-        records of every times channel in line with Slack, and takes up the
-        unfinished requests. It must run before the app connects, while no
-        listener can start a request.
+        records of every times channel in line with Slack, takes up the
+        unfinished requests, and looks for the welcome messages whose results
+        are unknown. It must run before the app connects, while no listener
+        can start a request or a message.
     """
 
     registry = timesforge.times.registry.RegistryIO(database)
@@ -95,6 +109,7 @@ def register(
     exclusions = timesforge.times.exclusion.ExclusionIO(database)
     recreations = timesforge.times.recreation.RecreationIO(database)
     log = timesforge.times.history.HistoryIO(database)
+    onboarding = timesforge.times.onboarding.OnboardingIO(database)
     guard = [timesforge.slack.permission.restrict(settings)]
 
     def inspect(
@@ -164,6 +179,16 @@ def register(
 
             if (request := requests.load(team, request_id)) is not None: refresh(team, request.user_id)
 
+    def retrieve(
+        team: str,
+        users: list[str]
+    ) -> None:
+
+        for user in users:
+
+            try: timesforge.slack.welcome.Greeter(application.client, sender, onboarding, team).recover(user, datetime.datetime.now(datetime.UTC))
+            except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Welcome message of %s was not looked for: %s', user, error)
+
     def reconcile(
         team: str,
         now: datetime.datetime,
@@ -183,10 +208,15 @@ def register(
 
         unfinished = [request.request_id for request in requests.scan(team, ['reserved', 'reconciling', 'created', 'inviting'])]
 
+        for message in onboarding.scan(team, ['sending']): onboarding.lose(team, message.user_id, error = 'interrupted', now = now)
+
+        unknown = [message.user_id for message in onboarding.scan(team, ['unknown'])]
+
         try: reconcile(team, now)
         except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Times channels were not reconciled: %s', error)
 
         if unfinished: detach(lambda: resume(team, unfinished))
+        if unknown: detach(lambda: retrieve(team, unknown))
 
     def publish(
         event: dict[str, typing.Any],
@@ -207,6 +237,24 @@ def register(
         channel = event['channel']
 
         reconcile(context.team_id, datetime.datetime.now(datetime.UTC), [channel if isinstance(channel, str) else channel['id']])
+
+    def welcome(
+        body: dict[str, typing.Any],
+        event: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        team, user = context.team_id, event['user']
+
+        if team is None or event.get('channel') != settings.timesforge_channel_id_welcome: return
+
+        eligible, language = inspect(user)
+
+        if not eligible or registry.find(team, user) or requests.find(team, user) or exclusions.load(team, user) is not None: return
+
+        text, blocks = timesforge.slack.view.welcome(workspace = application.client.auth_test().get('team', ''), team_id = team, app_id = body.get('api_app_id', ''), language = language)
+
+        timesforge.slack.welcome.Greeter(application.client, sender, onboarding, team).greet(user, channel_id = event['channel'], event_id = body.get('event_id', ''), text = text, blocks = blocks, now = datetime.datetime.now(datetime.UTC))
 
     def ask(
         ack: slack_bolt.Ack,
@@ -455,6 +503,7 @@ def register(
     application.event('channel_deleted')(follow)
     application.event('channel_rename')(follow)
     application.event('channel_unarchive')(follow)
+    application.event('member_joined_channel')(welcome)
     application.action(timesforge.slack.view.CREATION_ACTION)(ask)
     application.view(timesforge.slack.view.CREATION_CALLBACK)(reserve)
     application.action(timesforge.slack.view.RESOLUTION_ACTION, middleware = guard)(consider)

@@ -108,7 +108,7 @@ def _start(
     try:
 
         settings = timesforge.configuration.load()
-        settings.require('slack_bot_token', 'slack_app_token', 'timesforge_owner_id')
+        settings.require('slack_bot_token', 'slack_app_token', 'timesforge_owner_id', 'timesforge_channel_id_welcome')
 
         with contextlib.suppress(KeyboardInterrupt): timesforge.slack.application.serve(settings)
 

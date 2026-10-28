@@ -112,5 +112,8 @@
   "review.member": "New holder",
   "review.none": "No times channel was imported.",
   "review.submit": "Change holder",
-  "review.title": "Imported channels"
+  "review.title": "Imported channels",
+  "welcome.action": "Create your times",
+  "welcome.body": "You can create your own public channel, `#times_(First Name)`.\nEnter your first name, and {product} will automatically create your channel and invite eligible workspace members.\nEach member can normally create one times channel.",
+  "welcome.title": "Welcome to {workspace}!"
 }

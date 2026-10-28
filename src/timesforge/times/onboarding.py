@@ -1,7 +1,9 @@
 """Messages that welcome new members and tell them how to create their times channels."""
 
+import collections.abc
 import dataclasses
 import datetime
+import json
 import sqlite3
 import typing
 
@@ -10,6 +12,7 @@ import timesforge.storage
 type Status = typing.Literal['pending', 'sending', 'sent', 'failed', 'unknown']
 
 _MESSAGE_SELECT = 'SELECT user_id, channel_id, event_id, message_status, conversation_id, message_ts, error_message, create_time, send_time FROM onboarding WHERE workspace_id = ? AND user_id = ?'
+_STATUS_SELECT = 'SELECT user_id, channel_id, event_id, message_status, conversation_id, message_ts, error_message, create_time, send_time FROM onboarding WHERE workspace_id = ? AND message_status IN (SELECT value FROM json_each(?)) ORDER BY create_time, user_id'
 _MESSAGE_INSERT = "INSERT INTO onboarding (workspace_id, user_id, channel_id, event_id, message_status, create_time, update_time) VALUES (?, ?, ?, ?, 'pending', ?, ?) ON CONFLICT (workspace_id, user_id) DO NOTHING"
 _MESSAGE_SEND = "UPDATE onboarding SET message_status = 'sending', error_message = NULL, update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status IN ('pending', 'failed')"
 _MESSAGE_SUCCEED = "UPDATE onboarding SET message_status = 'sent', conversation_id = ?, message_ts = ?, error_message = NULL, send_time = ?, update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status IN ('sending', 'unknown')"
@@ -85,6 +88,24 @@ class OnboardingIO:
         row = self._database.connect().execute(_MESSAGE_SELECT, (workspace_id, user_id)).fetchone()
 
         return None if row is None else _decode(row)
+
+    def scan(
+        self,
+        workspace_id: str,
+        statuses: collections.abc.Collection[Status]
+    ) -> list[Message]:
+
+        """Lists the welcome messages of a workspace in some statuses.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            statuses: The statuses.
+
+        Returns:
+            The messages, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_STATUS_SELECT, (workspace_id, json.dumps(sorted(statuses))))]
 
     def claim(
         self,

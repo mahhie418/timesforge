@@ -155,6 +155,13 @@ def test_view_history_modal() -> None:
     assert [block['text']['text'] for block in view['blocks']] == ['<!date^1793199600^{date_short} {time}|2026-10-28 15:00 UTC> <#CXXX1> was renamed to #xxx.', '<!date^1793199600^{date_short} {time}|2026-10-28 15:00 UTC> <@UXXX1> excluded <@UXXX2> from creating times channels.']
     assert [block['text']['text'] for block in empty['blocks']] == ['Nothing has changed yet.']
 
+def test_view_welcome_message() -> None:
+
+    text, blocks = timesforge.slack.view.welcome(workspace = 'xxx', team_id = 'TXXX', app_id = 'AXXX', language = 'en')
+
+    assert text.startswith('Welcome to xxx!\nYou can create your own public channel, `#times_(First Name)`.')
+    assert [block['text']['text'] for block in blocks] == [f'*Welcome to xxx!*\n{text.split('\n', 1)[1]}', '<slack://app?team=TXXX&id=AXXX&tab=home|Create your times>']
+
 @pytest.mark.parametrize(('role', 'texts'), ROLES_MESSAGE)
 def test_view_home_role(
     role: timesforge.slack.permission.Role,

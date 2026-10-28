@@ -1,10 +1,11 @@
-"""Views of the Slack app: the App Home and its modals."""
+"""Views of the Slack app: the App Home, its modals and its messages."""
 
 import datetime
 import typing
 
 import timesforge.configuration
 import timesforge.localisation
+import timesforge.product
 import timesforge.slack.permission
 import timesforge.times.exclusion
 import timesforge.times.history
@@ -316,6 +317,34 @@ def trace(
     blocks = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': f"{_time(entry.creation)} {timesforge.localisation.translate(f'history.{entry.action}', language, actor = f'<@{entry.actor_id}>' if entry.actor_id else unknown, target = f'<@{entry.target_id}>', channel = f'<#{entry.channel_id}>', name = entry.details.get('channel_name', ''))}"}} for entry in entries]
 
     return {'type': 'modal', 'title': _plain(title), 'close': _plain(timesforge.localisation.translate('modal.close', language)), 'blocks': blocks}
+
+def welcome(
+    *,
+    workspace: str,
+    team_id: str,
+    app_id: str,
+    language: timesforge.configuration.Language
+) -> tuple[str, list[dict[str, typing.Any]]]:
+
+    """Builds the direct message that welcomes a new member and tells them how to create their times channel.
+
+    It links to the App Home, where the member creates the channel.
+
+    Args:
+        workspace: Name of the workspace.
+        team_id: Slack workspace ID.
+        app_id: Slack app ID.
+        language: Language of the member.
+
+    Returns:
+        The text of the message, for notifications, and its blocks, as chat.postMessage takes them.
+    """
+
+    title = timesforge.localisation.translate('welcome.title', language, workspace = workspace)
+    body = timesforge.localisation.translate('welcome.body', language, workspace = workspace, product = timesforge.product.NAME)
+    link = f"<slack://app?team={team_id}&id={app_id}&tab=home|{timesforge.localisation.translate('welcome.action', language)}>"
+
+    return f'{title}\n{body}', [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': f'*{title}*\n{body}'}}, {'type': 'section', 'text': {'type': 'mrkdwn', 'text': link}}]
 
 def _describe(
     channel: timesforge.times.registry.Channel,

@@ -39,7 +39,7 @@ class Slack(slack_sdk.web.WebClient):
 
         match api_method:
 
-            case 'auth.test': data = {'ok': True, 'team_id': 'TXXX', 'user_id': self.identity}
+            case 'auth.test': data = {'ok': True, 'team': 'xxx', 'team_id': 'TXXX', 'user_id': self.identity}
             case 'users.list': data = {'ok': True, **page('members', self.workspace['users'], arguments)}
             case 'users.info': data = next(({'ok': True, 'user': user} for user in self.workspace['users'] if user['id'] == arguments['user']), {'ok': False, 'error': 'user_not_found'})
             case 'conversations.info': data = next(({'ok': True, 'channel': channel} for channel in self.workspace['channels'] if channel['id'] == arguments['channel']), {'ok': False, 'error': 'channel_not_found'})
@@ -47,6 +47,9 @@ class Slack(slack_sdk.web.WebClient):
             case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'].get(arguments['channel'], []), arguments)}
             case 'conversations.create': return self.create(arguments)
             case 'conversations.invite': return self.invite(arguments)
+            case 'conversations.open': data = {'ok': True, 'channel': {'id': f'D{arguments['users']}'}}
+            case 'conversations.history': data = {'ok': True, 'messages': list(reversed(self.workspace['messages'].get(arguments['channel'], [])))}
+            case 'chat.postMessage': return self.post(arguments)
             case 'views.open': data = {'ok': True, 'view': {'id': 'VXXX'}}
             case 'views.publish' | 'views.update': data = {'ok': True}
             case _: raise NotImplementedError(api_method)
@@ -93,6 +96,27 @@ class Slack(slack_sdk.web.WebClient):
 
         return respond(self, 'conversations.invite', arguments, {'ok': True, 'channel': {'id': arguments['channel']}})
 
+    def post(
+        self,
+        arguments: dict[str, typing.Any]
+    ) -> slack_sdk.web.SlackResponse:
+
+        drops: list[str | int] = self.workspace['drops']
+        drop = drops.pop(0) if drops else None
+        conversations: dict[str, list[dict[str, typing.Any]]] = self.workspace['messages']
+
+        if drop == 'dropped': raise TimeoutError('xxx')
+        if isinstance(drop, int): return respond(self, 'chat.postMessage', arguments, {'ok': False, 'error': 'fatal_error'}, drop)
+        if drop not in {None, 'lost'}: return respond(self, 'chat.postMessage', arguments, {'ok': False, 'error': drop})
+
+        messages = conversations.setdefault(arguments['channel'], [])
+        message = {'type': 'message', 'user': self.identity, 'text': arguments['text'], 'ts': f'{self.workspace['clock']}.{len(messages) + 1:06d}', 'metadata': arguments.get('metadata')}
+        messages.append(message)
+
+        if drop == 'lost': raise TimeoutError('xxx')
+
+        return respond(self, 'chat.postMessage', arguments, {'ok': True, 'channel': arguments['channel'], 'ts': message['ts'], 'message': message})
+
 @pytest.fixture
 def database(
     tmp_path: pathlib.Path
@@ -107,7 +131,7 @@ def workspace() -> dict[str, typing.Any]:
     directory = pathlib.Path(os.path.join(pathlib.Path(__file__).parent, 'fixtures', 'slack'))
     users, channels, members = (json.loads(pathlib.Path(os.path.join(directory, name)).read_text(encoding = 'utf-8')) for name in ('users.list.json', 'conversations.list.json', 'conversations.members.json'))
 
-    return {'users': users, 'channels': channels, 'members': members, 'clock': 1793026800, 'failures': [], 'refusals': {}, 'calls': []}
+    return {'users': users, 'channels': channels, 'members': members, 'messages': {}, 'clock': 1793026800, 'failures': [], 'drops': [], 'refusals': {}, 'calls': []}
 
 @pytest.fixture
 def slack(

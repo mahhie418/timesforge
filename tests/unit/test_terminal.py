@@ -18,9 +18,9 @@ import timesforge.terminal
 CHANNELS_COUNT = 'SELECT count(*) FROM channel'
 
 ENVIRONMENTS_START = [
-    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxp-xxx', False)]),
-    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': '', 'TIMESFORGE_OWNER_ID': 'UXXX1'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxb-xxx', False)]),
-    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID\n', [], [])
+    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxp-xxx', False), ('xoxb-xxx', False)]),
+    ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': '', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxb-xxx', False), ('xoxb-xxx', False)]),
+    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': '', 'TIMESFORGE_CHANNEL_ID_WELCOME': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID, TIMESFORGE_CHANNEL_ID_WELCOME\n', [], [])
 ]
 
 def prepare(
@@ -229,6 +229,7 @@ class TestTerminalCommandStart:
         monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
         monkeypatch.setenv('SLACK_APP_TOKEN', 'xapp-xxx')
         monkeypatch.setenv('TIMESFORGE_OWNER_ID', 'UXXX1')
+        monkeypatch.setenv('TIMESFORGE_CHANNEL_ID_WELCOME', 'CXXX0')
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(timesforge.slack.application, 'start', unittest.mock.Mock())
@@ -247,9 +248,9 @@ class TestTerminalCommandManifest:
 
         manifest = json.loads(capsys.readouterr().out)
 
-        assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'users:read']
+        assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'chat:write', 'im:history', 'im:write', 'users:read']
         assert manifest['oauth_config']['scopes']['user'] == ['channels:write']
         assert manifest['features']['app_home']['home_tab_enabled']
-        assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened', 'channel_archive', 'channel_deleted', 'channel_rename', 'channel_unarchive']
+        assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened', 'channel_archive', 'channel_deleted', 'channel_rename', 'channel_unarchive', 'member_joined_channel']
         assert manifest['settings']['interactivity']['is_enabled']
         assert manifest['settings']['socket_mode_enabled']

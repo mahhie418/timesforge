@@ -21,6 +21,7 @@ import timesforge.storage
 import timesforge.times.exclusion
 import timesforge.times.history
 import timesforge.times.naming
+import timesforge.times.onboarding
 import timesforge.times.policy
 import timesforge.times.recreation
 import timesforge.times.registry
@@ -39,6 +40,8 @@ EVENTS_CHANNEL = [
     ({'type': 'channel_deleted', 'channel': 'CXXX3'}, 'UXXX3', [('deleted', 'times_zzz')], [('UXXX3', 'used')]),
     ({'type': 'channel_unarchive', 'channel': 'CXXX1', 'user': 'UXXX1'}, 'UXXX1', [('active', 'times_xxx')], [])
 ]
+
+JOINS_IGNORED = [('UXXX2', 'CXXX1'), ('UXXXB', 'CXXX0'), ('UXXX5', 'CXXX0'), ('UXXX1', 'CXXX0'), ('UXXX3', 'CXXX0'), ('UXXX4', 'CXXX0')]
 
 NAMES_INVALID = [(' ', 'empty'), ('漢字', 'characters'), ('X' * 75, 'length')]
 
@@ -91,7 +94,7 @@ def registration(
     application = slack_bolt.App(client = slack, process_before_response = True)
     monkeypatch.setattr(timesforge.slack.handler, 'detach', detach)
 
-    return application, timesforge.slack.handler.register(application, timesforge.configuration.load({'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_LANGUAGE_DISPLAY': 'ja'}), database, writer)
+    return application, timesforge.slack.handler.register(application, timesforge.configuration.load({'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0', 'TIMESFORGE_LANGUAGE_DISPLAY': 'ja'}), database, writer, slack)
 
 @pytest.fixture
 def registry(
@@ -118,6 +121,14 @@ def change(
 ) -> slack_bolt.BoltResponse:
 
     return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'event_callback', 'team_id': 'TXXX', 'event': event}, mode = 'socket_mode'))
+
+def join(
+    application: slack_bolt.App,
+    user: str,
+    channel: str
+) -> slack_bolt.BoltResponse:
+
+    return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'event_callback', 'team_id': 'TXXX', 'api_app_id': 'AXXX', 'event_id': 'EvXXX', 'event': {'type': 'member_joined_channel', 'user': user, 'channel': channel, 'channel_type': 'C', 'team': 'TXXX'}}, mode = 'socket_mode'))
 
 def press(
     application: slack_bolt.App,
@@ -278,6 +289,72 @@ def test_handler_request_recovery(
 
     assert [(request.user_id, request.status, request.channel_id) for user in ('UXXX2', 'UXXX3') for request in requests.find('TXXX', user)] == [('UXXX2', 'completed', 'CXXX3'), ('UXXX3', 'completed', 'CXXX4')]
     assert [arguments['user_id'] for arguments in calls(workspace, 'views.publish')] == ['UXXX2', 'UXXX3']
+
+def test_handler_member_welcome(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    text, blocks = timesforge.slack.view.welcome(workspace = 'xxx', team_id = 'TXXX', app_id = 'AXXX', language = 'ja')
+
+    assert join(application, 'UXXX2', 'CXXX0').status == 200
+    assert join(application, 'UXXX2', 'CXXX0').status == 200
+    assert [(arguments['channel'], arguments['text'], arguments['blocks'], arguments['metadata']['event_type']) for arguments in calls(workspace, 'chat.postMessage')] == [('DUXXX2', text, blocks, 'timesforge_welcome')]
+
+    message = timesforge.times.onboarding.OnboardingIO(database).load('TXXX', 'UXXX2')
+
+    assert message is not None
+    assert (message.channel_id, message.event_id, message.status, message.conversation_id, message.message_ts) == ('CXXX0', 'EvXXX', 'sent', 'DUXXX2', '1793026800.000001')
+    assert 'slack://app?team=TXXX&id=AXXX&tab=home' in blocks[1]['text']['text']
+
+def test_handler_welcome_locale(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any]
+) -> None:
+
+    next(entry for entry in workspace['users'] if entry['id'] == 'UXXX2')['locale'] = 'en-US'
+
+    join(application, 'UXXX2', 'CXXX0')
+
+    assert [arguments['text'] for arguments in calls(workspace, 'chat.postMessage')] == [timesforge.slack.view.welcome(workspace = 'xxx', team_id = 'TXXX', app_id = 'AXXX', language = 'en')[0]]
+
+@pytest.mark.parametrize(('user', 'channel'), JOINS_IGNORED)
+def test_handler_welcome_skip(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database,
+    user: str,
+    channel: str
+) -> None:
+
+    holding = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', creation = CREATION)
+
+    timesforge.times.registry.RegistryIO(database).save('TXXX', holding)
+    timesforge.times.exclusion.ExclusionIO(database).add('TXXX', timesforge.times.exclusion.Exclusion(user_id = 'UXXX3', reason = 'xxx', owner_id = 'UXXX1', creation = CREATION))
+    timesforge.times.request.RequestIO(database).reserve('TXXX', 'UXXX4', 'Yyy', CREATION)
+
+    assert join(application, user, channel).status == 200
+    assert calls(workspace, 'chat.postMessage') == []
+    assert timesforge.times.onboarding.OnboardingIO(database).load('TXXX', user) is None
+
+def test_handler_message_recovery(
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database,
+    recover: collections.abc.Callable[[str, datetime.datetime], None]
+) -> None:
+
+    store = timesforge.times.onboarding.OnboardingIO(database)
+
+    for user in ('UXXX2', 'UXXX3'): store.claim('TXXX', user, channel_id = 'CXXX0', event_id = 'EvXXX', now = CREATION); store.send('TXXX', user, CREATION)
+
+    store.lose('TXXX', 'UXXX2', error = 'xxx', now = CREATION)
+    workspace['messages']['DUXXX2'] = [{'type': 'message', 'user': 'UXXXB', 'text': 'xxx', 'ts': '1793026800.000001', 'metadata': {'event_type': 'timesforge_welcome', 'event_payload': {'user_id': 'UXXX2'}}}]
+
+    recover('TXXX', CREATION)
+
+    assert [(message.user_id, message.status, message.message_ts) for message in store.scan('TXXX', ['sent', 'unknown'])] == [('UXXX2', 'sent', '1793026800.000001'), ('UXXX3', 'unknown', None)]
+    assert calls(workspace, 'chat.postMessage') == []
 
 def test_handler_creation_modal(
     application: slack_bolt.App,
