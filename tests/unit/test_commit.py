@@ -58,7 +58,7 @@ def test_commit_error_report() -> None:
 
     assert len(problems) == 6
 
-def test_commit_hook_message_valid(
+def test_commit_hook_acceptance(
     tmp_path: pathlib.Path
 ) -> None:
 
@@ -67,7 +67,7 @@ def test_commit_hook_message_valid(
 
     assert commit.main([str(file)]) == 0
 
-def test_commit_hook_message_invalid(
+def test_commit_hook_rejection(
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture[str]
 ) -> None:

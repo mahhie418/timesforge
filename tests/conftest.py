@@ -27,7 +27,6 @@ class Slack(slack_sdk.web.WebClient):
         self,
         api_method: str,
         *,
-        http_verb: str = 'POST',
         params: dict[str, typing.Any] | None = None,
         json: dict[str, typing.Any] | None = None,
         **_: object

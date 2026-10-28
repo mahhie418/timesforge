@@ -44,7 +44,7 @@ def count(
     try: return database.connect().execute(CHANNELS_COUNT).fetchone()[0]
     finally: database.close()
 
-def test_terminal_version(
+def test_terminal_version_option(
     capsys: pytest.CaptureFixture[str]
 ) -> None:
 
@@ -55,7 +55,7 @@ def test_terminal_version(
     assert exception.value.code == 0
     assert capsys.readouterr().out.strip() == expected
 
-def test_terminal_missing(
+def test_terminal_command_missing(
     capsys: pytest.CaptureFixture[str]
 ) -> None:
 
