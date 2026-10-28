@@ -1,3 +1,5 @@
+import collections.abc
+import datetime
 import json
 import os
 import pathlib
@@ -180,10 +182,12 @@ class TestTerminalCommandStart:
 
         def start(
             _: slack_bolt.App,
-            token: str
+            token: str,
+            recover: collections.abc.Callable[[str, datetime.datetime], None]
         ) -> None:
 
             tokens.append(token)
+            recover('TXXX', datetime.datetime.now(datetime.UTC))
 
             raise KeyboardInterrupt
 
@@ -238,5 +242,5 @@ class TestTerminalCommandManifest:
         assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'users:read']
         assert manifest['oauth_config']['scopes']['user'] == ['channels:write']
         assert manifest['features']['app_home']['home_tab_enabled']
-        assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened']
+        assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened', 'channel_archive', 'channel_deleted', 'channel_rename', 'channel_unarchive']
         assert manifest['settings']['socket_mode_enabled']

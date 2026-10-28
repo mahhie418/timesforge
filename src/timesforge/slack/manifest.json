@@ -26,7 +26,11 @@
   "settings": {
     "event_subscriptions": {
       "bot_events": [
-        "app_home_opened"
+        "app_home_opened",
+        "channel_archive",
+        "channel_deleted",
+        "channel_rename",
+        "channel_unarchive"
       ]
     },
     "socket_mode_enabled": true

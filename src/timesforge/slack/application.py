@@ -2,6 +2,7 @@
 
 import collections.abc
 import contextlib
+import datetime
 import os
 import pathlib
 import sqlite3
@@ -26,7 +27,7 @@ def build(
     client: slack_sdk.web.WebClient,
     settings: timesforge.configuration.Settings,
     database: timesforge.storage.Database
-) -> slack_bolt.App:
+) -> tuple[slack_bolt.App, collections.abc.Callable[[str, datetime.datetime], None]]:
 
     """Builds the Slack app with its listeners.
 
@@ -36,16 +37,16 @@ def build(
         database: Database with the times channels of each workspace.
 
     Returns:
-        The app.
+        The app, and the function that catches up with what changed in Slack
+        while the app was stopped, given the workspace ID and the current time.
 
     Raises:
         slack_bolt.error.BoltError: Slack refused the bot token.
     """
 
     application = slack_bolt.App(token = client.token, client = client)
-    timesforge.slack.handler.register(application, settings, database)
 
-    return application
+    return application, timesforge.slack.handler.register(application, settings, database)
 
 @contextlib.contextmanager
 def lock(
@@ -103,19 +104,32 @@ def serve(
 
         database = timesforge.storage.Database(pathlib.Path(os.path.join(settings.timesforge_data_directory, timesforge.storage.DATABASE_FILE)))
 
-        try: start(build(timesforge.slack.api.connect(settings.slack_bot_token), settings, database), settings.slack_app_token)
-        finally: database.close()
+        try:
+
+            application, recover = build(timesforge.slack.api.connect(settings.slack_bot_token), settings, database)
+            start(application, settings.slack_app_token, recover)
+
+        finally:
+
+            database.close()
 
 def start(
     application: slack_bolt.App,
-    token: str
+    token: str,
+    recover: collections.abc.Callable[[str, datetime.datetime], None]
 ) -> None:
 
     """Connects the app to Slack through Socket Mode and serves it until the process stops.
 
+    Before it connects, the app catches up with what changed in Slack while
+    it was stopped.
+
     Args:
         application: The application.
         token: App-level token of the Slack app (xapp-...).
+        recover: Function that catches up with what changed in Slack while
+                 the app was stopped, given the workspace ID and the current time.
     """
 
+    recover(application.client.auth_test().get('team_id', ''), datetime.datetime.now(datetime.UTC))
     slack_bolt.adapter.socket_mode.SocketModeHandler(application, token).start()
