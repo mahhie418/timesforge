@@ -172,6 +172,13 @@ def test_view_welcome_message() -> None:
     assert text.startswith('Welcome to xxx!\nYou can create your own public channel, `#times_(First Name)`.')
     assert [block['text']['text'] for block in blocks] == [f'*Welcome to xxx!*\n{text.split('\n', 1)[1]}', '<slack://app?team=TXXX&id=AXXX&tab=home|Create your times>']
 
+def test_view_ready_message() -> None:
+
+    text, blocks = timesforge.slack.view.ready(channel_id = 'CXXX1', language = 'en')
+
+    assert text == 'Your times channel is ready!\nYou can find your channel here:\n<#CXXX1>'
+    assert [block['text']['text'] for block in blocks] == ['*Your times channel is ready!*\nYou can find your channel here:\n<#CXXX1>']
+
 @pytest.mark.parametrize(('role', 'texts'), ROLES_MESSAGE)
 def test_view_home_role(
     role: timesforge.slack.permission.Role,

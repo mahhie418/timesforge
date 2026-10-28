@@ -9,7 +9,7 @@ import typing
 
 import timesforge.storage
 
-type Status = typing.Literal['pending', 'sending', 'sent', 'failed', 'unknown']
+type Status = typing.Literal['pending', 'sending', 'sent', 'failed', 'unknown', 'updated']
 
 _MESSAGE_SELECT = 'SELECT user_id, channel_id, event_id, message_status, conversation_id, message_ts, error_message, create_time, send_time FROM onboarding WHERE workspace_id = ? AND user_id = ?'
 _STATUS_SELECT = 'SELECT user_id, channel_id, event_id, message_status, conversation_id, message_ts, error_message, create_time, send_time FROM onboarding WHERE workspace_id = ? AND message_status IN (SELECT value FROM json_each(?)) ORDER BY create_time, user_id'
@@ -17,6 +17,7 @@ _MESSAGE_INSERT = "INSERT INTO onboarding (workspace_id, user_id, channel_id, ev
 _MESSAGE_SEND = "UPDATE onboarding SET message_status = 'sending', error_message = NULL, update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status IN ('pending', 'failed')"
 _MESSAGE_SUCCEED = "UPDATE onboarding SET message_status = 'sent', conversation_id = ?, message_ts = ?, error_message = NULL, send_time = ?, update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status IN ('sending', 'unknown')"
 _MESSAGE_FAIL = "UPDATE onboarding SET message_status = 'failed', error_message = ?, update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status = 'sending'"
+_MESSAGE_UPDATE = "UPDATE onboarding SET message_status = 'updated', update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status IN ('sent', 'updated')"
 _MESSAGE_LOSE = "UPDATE onboarding SET message_status = 'unknown', error_message = ?, update_time = ? WHERE workspace_id = ? AND user_id = ? AND message_status = 'sending'"
 
 @dataclasses.dataclass(frozen = True, slots = True, kw_only = True)
@@ -28,7 +29,7 @@ class Message:
         user_id: Slack user ID of the member.
         channel_id: Slack channel ID of the channel whose joining started the message, such as #welcome.
         event_id: ID of the Slack event that started the message.
-        status: pending until it is sent, sending while it is sent, sent once Slack took it, failed when Slack refused it, or unknown when nobody knows whether Slack took it.
+        status: pending until it is sent, sending while it is sent, sent once Slack took it, failed when Slack refused it, unknown when nobody knows whether Slack took it, or updated once it was edited to link to the times channel of the member.
         conversation_id: Slack ID of the direct message conversation, or None until the message is sent.
         message_ts: Timestamp of the message, or None until it is sent.
         error: Why the last attempt failed or was lost, or None.
@@ -224,6 +225,26 @@ class OnboardingIO:
         """
 
         with self._database.begin() as connection: return connection.execute(_MESSAGE_LOSE, (error, now.isoformat(), workspace_id, user_id)).rowcount == 1
+
+    def update(
+        self,
+        workspace_id: str,
+        user_id: str,
+        now: datetime.datetime
+    ) -> bool:
+
+        """Records that the welcome message of a member was edited to link to their times channel.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+            now: The current time.
+
+        Returns:
+            Whether the message was sent or updated before.
+        """
+
+        with self._database.begin() as connection: return connection.execute(_MESSAGE_UPDATE, (now.isoformat(), workspace_id, user_id)).rowcount == 1
 
 def _decode(
     row: sqlite3.Row

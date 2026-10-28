@@ -82,7 +82,9 @@ def register(
     `timesforge.slack.welcome.Greeter` makes sure, unless they are a guest,
     are excluded, or have ever asked for or held a times channel. The
     messages whose results the app left unknown when it stopped are looked
-    for in the background once it starts again.
+    for in the background once it starts again. Once the member has a times
+    channel, their welcome message is edited to link to it and no longer to
+    ask them to create one; when Slack refuses the edit, the channel stays.
 
     Args:
         application: The application.
@@ -152,6 +154,20 @@ def register(
 
         return timesforge.slack.creation.Creator(writer, application.client, requests, team, timesforge.slack.invitation.Inviter(application.client, writer, invitations, team))
 
+    def notify(
+        team: str,
+        user: str
+    ) -> None:
+
+        current = next((channel for channel in registry.find(team, user) if channel.status != 'deleted'), None)
+
+        if current is None or onboarding.load(team, user) is None: return
+
+        text, blocks = timesforge.slack.view.ready(channel_id = current.channel_id, language = choose(user))
+
+        try: timesforge.slack.welcome.Greeter(application.client, sender, onboarding, team).update(user, text = text, blocks = blocks, now = datetime.datetime.now(datetime.UTC))
+        except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Welcome message of %s was not updated: %s', user, error)
+
     def create(
         team: str,
         user: str,
@@ -164,6 +180,7 @@ def register(
         except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Times channel of request %s was not finished: %s', request_id, error)
 
         refresh(team, user)
+        notify(team, user)
 
         if (request := requests.load(team, request_id)) is not None: show(modal, timesforge.slack.view.report(request = request, language = language))
 
@@ -177,7 +194,10 @@ def register(
             try: build(team).resume(request_id, datetime.datetime.now(datetime.UTC))
             except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Times channel of request %s was not finished: %s', request_id, error)
 
-            if (request := requests.load(team, request_id)) is not None: refresh(team, request.user_id)
+            if (request := requests.load(team, request_id)) is None: continue
+
+            refresh(team, request.user_id)
+            notify(team, request.user_id)
 
     def retrieve(
         team: str,
@@ -188,6 +208,8 @@ def register(
 
             try: timesforge.slack.welcome.Greeter(application.client, sender, onboarding, team).recover(user, datetime.datetime.now(datetime.UTC))
             except slack_sdk.errors.SlackApiError as error: _LOGGER.warning('Welcome message of %s was not looked for: %s', user, error)
+
+            notify(team, user)
 
     def reconcile(
         team: str,

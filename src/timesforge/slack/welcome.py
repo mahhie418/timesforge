@@ -23,7 +23,8 @@ class Greeter:
     across restarts. When nobody knows whether Slack took a message, because
     the connection broke or Slack failed, it is not sent again; `recover`
     looks for it in the direct message conversation instead, by the metadata
-    that each welcome message carries.
+    that each welcome message carries. Once the member has a times channel,
+    `update` edits their message rather than sending another one.
     """
 
     def __init__(
@@ -113,6 +114,46 @@ class Greeter:
         if (entry := next((entry for entry in entries if entry.get('metadata', {}).get('event_type') == METADATA_TYPE), None)) is not None: self._store.succeed(self._workspace_id, user_id, conversation_id = conversation['id'], message_ts = entry['ts'], now = now)
 
         return self._store.load(self._workspace_id, user_id)
+
+    def update(
+        self,
+        user_id: str,
+        *,
+        text: str,
+        blocks: list[dict[str, typing.Any]],
+        now: datetime.datetime
+    ) -> timesforge.times.onboarding.Message | None:
+
+        """Edits the welcome message of a member, as once their times channel exists, so that it no longer asks them to create one.
+
+        Nothing happens to a member who has no message that Slack took. A
+        message that was edited already is edited again, as when the member
+        created a channel again after the first was deleted.
+
+        Args:
+            user_id: Slack user ID of the member.
+            text: New text of the message, for notifications.
+            blocks: New blocks of the message.
+            now: The current time.
+
+        Returns:
+            The message afterwards, or None when the member was never welcomed.
+
+        Raises:
+            slack_sdk.errors.SlackApiError: Slack refused to edit the message,
+                                            as when the member deleted it.
+        """
+
+        match message := self._store.load(self._workspace_id, user_id):
+
+            case timesforge.times.onboarding.Message(status = 'sent' | 'updated', conversation_id = str() as conversation_id, message_ts = str() as message_ts):
+
+                self._client.chat_update(channel = conversation_id, ts = message_ts, text = text, blocks = blocks)
+                self._store.update(self._workspace_id, user_id, now)
+
+                return self._store.load(self._workspace_id, user_id)
+
+            case _: return message
 
     def _send(
         self,

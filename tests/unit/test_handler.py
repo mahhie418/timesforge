@@ -371,6 +371,49 @@ def test_handler_message_recovery(
     assert [(message.user_id, message.status, message.message_ts) for message in store.scan('TXXX', ['sent', 'unknown'])] == [('UXXX2', 'sent', '1793026800.000001'), ('UXXX3', 'unknown', None)]
     assert calls(workspace, 'chat.postMessage') == []
 
+def test_handler_message_update(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    join(application, 'UXXX2', 'CXXX0')
+    submit(application, 'UXXX2', named('Yyy'))
+
+    registry = timesforge.times.registry.RegistryIO(database)
+    registry.delete('TXXX', 'CXXX3', CREATION)
+    timesforge.times.recreation.RecreationIO(database).grant('TXXX', 'UXXX2', owner_id = 'UXXX1', now = CREATION)
+
+    submit(application, 'UXXX2', named('Zzz'))
+
+    message = timesforge.times.onboarding.OnboardingIO(database).load('TXXX', 'UXXX2')
+    texts = [timesforge.slack.view.ready(channel_id = channel_id, language = 'ja') for channel_id in ('CXXX3', 'CXXX4')]
+
+    assert message is not None
+    assert message.status == 'updated'
+    assert len(calls(workspace, 'chat.postMessage')) == 1
+    assert calls(workspace, 'chat.update') == [{'channel': 'DUXXX2', 'ts': '1793026800.000001', 'text': text, 'blocks': blocks} for text, blocks in texts]
+
+def test_handler_update_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    application: slack_bolt.App,
+    slack: slack_sdk.web.WebClient,
+    database: timesforge.storage.Database
+) -> None:
+
+    monkeypatch.setattr(slack, 'chat_update', unittest.mock.Mock(side_effect = slack_sdk.errors.SlackApiError('xxx', 'xxx')))
+
+    join(application, 'UXXX2', 'CXXX0')
+    submit(application, 'UXXX2', named('Yyy'))
+
+    message = timesforge.times.onboarding.OnboardingIO(database).load('TXXX', 'UXXX2')
+
+    assert 'Welcome message of UXXX2 was not updated' in caplog.text
+    assert message is not None
+    assert message.status == 'sent'
+    assert [request.status for request in timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2')] == ['completed']
+
 def test_handler_creation_modal(
     application: slack_bolt.App,
     workspace: dict[str, typing.Any]

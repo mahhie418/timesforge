@@ -90,6 +90,33 @@ def test_welcome_result_unknown(
     assert message.status == status
     assert len(workspace['messages'].get('DUXXX2', [])) == (status == 'sent')
 
+def test_welcome_message_update(
+    workspace: dict[str, typing.Any],
+    greeter: timesforge.slack.welcome.Greeter
+) -> None:
+
+    assert greeter.update('UXXX2', text = 'yyy', blocks = BLOCKS, now = CHANGE) is None
+
+    workspace['drops'] = ['dropped']
+    message = greet(greeter)
+
+    assert message is not None
+    assert greeter.update('UXXX2', text = 'yyy', blocks = BLOCKS, now = CHANGE) == message
+    assert [name for name, _ in workspace['calls'] if name == 'chat.update'] == []
+
+def test_welcome_update_repetition(
+    workspace: dict[str, typing.Any],
+    greeter: timesforge.slack.welcome.Greeter
+) -> None:
+
+    greet(greeter)
+
+    for text in ('yyy', 'zzz'): message = greeter.update('UXXX2', text = text, blocks = BLOCKS, now = CHANGE)
+
+    assert message is not None
+    assert message.status == 'updated'
+    assert [arguments for name, arguments in workspace['calls'] if name == 'chat.update'] == [{'channel': 'DUXXX2', 'ts': '1793026800.000001', 'text': text, 'blocks': BLOCKS} for text in ('yyy', 'zzz')]
+
 def test_welcome_recovery_skip(
     greeter: timesforge.slack.welcome.Greeter
 ) -> None:

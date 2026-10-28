@@ -354,6 +354,27 @@ def welcome(
 
     return f'{title}\n{body}', [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': f'*{title}*\n{body}'}}, {'type': 'section', 'text': {'type': 'mrkdwn', 'text': link}}]
 
+def ready(
+    *,
+    channel_id: str,
+    language: timesforge.configuration.Language
+) -> tuple[str, list[dict[str, typing.Any]]]:
+
+    """Builds the welcome message once the times channel of the member is created, with a link to the channel and no link to create one.
+
+    Args:
+        channel_id: Slack channel ID of the times channel.
+        language: Language of the member.
+
+    Returns:
+        The text of the message, for notifications, and its blocks, as chat.update takes them.
+    """
+
+    title = timesforge.localisation.translate('ready.title', language)
+    body = timesforge.localisation.translate('ready.body', language, channel = f'<#{channel_id}>')
+
+    return f'{title}\n{body}', [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': f'*{title}*\n{body}'}}]
+
 def _describe(
     channel: timesforge.times.registry.Channel,
     language: timesforge.configuration.Language

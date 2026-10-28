@@ -82,6 +82,8 @@
   "home.times.pending": "{channel} はすでに使われています。オーナーが別の名前を決めるのを待っています。",
   "home.times.used": "削除されています。もう一度作成するには、オーナーの許可が必要です。",
   "modal.close": "閉じる",
+  "ready.body": "あなたの times チャンネルはこちらです。\n{channel}",
+  "ready.title": "times の作成が完了しました！",
   "recreation.choice": "変更",
   "recreation.choice.grant": "times チャンネルをもう一度作成できるようにする",
   "recreation.choice.revoke": "未使用の再作成権を取り消す",

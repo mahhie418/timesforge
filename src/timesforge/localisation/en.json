@@ -82,6 +82,8 @@
   "home.times.pending": "{channel} is taken. The owner will choose another name.",
   "home.times.used": "Yours was deleted. Creating another needs permission from the owner.",
   "modal.close": "Close",
+  "ready.body": "You can find your channel here:\n{channel}",
+  "ready.title": "Your times channel is ready!",
   "recreation.choice": "Change",
   "recreation.choice.grant": "Let them create one more times channel",
   "recreation.choice.revoke": "Revoke their unused grant",

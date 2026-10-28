@@ -69,6 +69,19 @@ def test_onboarding_message_loss(
     assert store.load('TXXX', 'UXXX1') == dataclasses.replace(PENDING, status = 'unknown', error = 'xxx')
     assert store.succeed('TXXX', 'UXXX1', conversation_id = 'DXXX', message_ts = '1.2', now = CHANGE)
 
+def test_onboarding_message_update(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.onboarding.OnboardingIO(database); claim(store)
+    store.send('TXXX', 'UXXX1', CHANGE)
+
+    assert not store.update('TXXX', 'UXXX1', CHANGE)
+    assert store.succeed('TXXX', 'UXXX1', conversation_id = 'DXXX', message_ts = '1.2', now = CHANGE)
+    assert store.update('TXXX', 'UXXX1', CHANGE)
+    assert store.update('TXXX', 'UXXX1', CHANGE)
+    assert store.load('TXXX', 'UXXX1') == dataclasses.replace(PENDING, status = 'updated', conversation_id = 'DXXX', message_ts = '1.2', delivery = CHANGE)
+
 def test_onboarding_workspace_scan(
     database: timesforge.storage.Database
 ) -> None:

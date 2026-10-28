@@ -50,6 +50,7 @@ class Slack(slack_sdk.web.WebClient):
             case 'conversations.open': data = {'ok': True, 'channel': {'id': f'D{arguments['users']}'}}
             case 'conversations.history': data = {'ok': True, 'messages': list(reversed(self.workspace['messages'].get(arguments['channel'], [])))}
             case 'chat.postMessage': return self.post(arguments)
+            case 'chat.update': data = {'ok': True, 'channel': arguments['channel'], 'ts': arguments['ts']}
             case 'views.open': data = {'ok': True, 'view': {'id': 'VXXX'}}
             case 'views.publish' | 'views.update': data = {'ok': True}
             case _: raise NotImplementedError(api_method)
