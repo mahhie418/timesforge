@@ -14,8 +14,10 @@ import timesforge.slack.permission
 import timesforge.slack.reconciliation
 import timesforge.slack.view
 import timesforge.storage
+import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.registry
+import timesforge.times.request
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +39,11 @@ def register(
     Slack may send an event twice or out of order, so Slack is asked for the
     state of the channel rather than trusted with the event.
 
+    A member who may create a times channel opens a modal from the App Home
+    and enters the first name that names it, which reserves the channel for
+    them. A first name that cannot name a times channel, or a member who may
+    not create one, is refused in the modal.
+
     Args:
         application: The application.
         settings: Settings of the deployment.
@@ -49,6 +56,15 @@ def register(
     """
 
     registry = timesforge.times.registry.RegistryIO(database)
+    requests = timesforge.times.request.RequestIO(database)
+
+    def choose(
+        user: str
+    ) -> timesforge.configuration.Language:
+
+        entry = application.client.users_info(user = user, include_locale = True).get('user', {})
+
+        return timesforge.localisation.choose(entry.get('locale'), settings.timesforge_language_display)
 
     def refresh(
         team: str,
@@ -56,9 +72,9 @@ def register(
     ) -> None:
 
         refusal = timesforge.times.policy.decide(database.connect(), team, user)
-        entry = application.client.users_info(user = user, include_locale = True).get('user', {})
-        language = timesforge.localisation.choose(entry.get('locale'), settings.timesforge_language_display)
-        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, role = timesforge.slack.permission.role(settings, user), language = language))
+        history = requests.find(team, user)
+
+        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, request = history[-1] if history else None, role = timesforge.slack.permission.role(settings, user), language = choose(user)))
 
     def reconcile(
         team: str,
@@ -98,10 +114,55 @@ def register(
 
         reconcile(context.team_id, datetime.datetime.now(datetime.UTC), [channel if isinstance(channel, str) else channel['id']])
 
+    def ask(
+        ack: slack_bolt.Ack,
+        body: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        ack()
+
+        if context.user_id is None: return
+
+        application.client.views_open(trigger_id = body['trigger_id'], view = timesforge.slack.view.collect(language = choose(context.user_id)))
+
+    def reserve(
+        ack: slack_bolt.Ack,
+        view: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        team, user = context.team_id, context.user_id
+
+        if team is None or user is None: return
+
+        first_name = view['state']['values'][timesforge.slack.view.NAME_INPUT][timesforge.slack.view.NAME_INPUT]['value']
+
+        try:
+
+            requests.reserve(team, user, first_name, datetime.datetime.now(datetime.UTC))
+
+        except timesforge.times.naming.NameInvalidError as error:
+
+            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'creation.error.{error.reason}', choose(user))})
+
+            return
+
+        except timesforge.times.request.RequestRefusedError as error:
+
+            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'home.times.{error.refusal}', choose(user))})
+
+            return
+
+        ack()
+        refresh(team, user)
+
     application.event('app_home_opened')(publish)
     application.event('channel_archive')(follow)
     application.event('channel_deleted')(follow)
     application.event('channel_rename')(follow)
     application.event('channel_unarchive')(follow)
+    application.action(timesforge.slack.view.CREATION_ACTION)(ask)
+    application.view(timesforge.slack.view.CREATION_CALLBACK)(reserve)
 
     return recover

@@ -1,8 +1,18 @@
 {
+  "creation.close": "キャンセル",
+  "creation.error.characters": "A〜Z の英字で入力してください。ハイフンは英字の間にだけ使えます。",
+  "creation.error.empty": "ファーストネームを入力してください。",
+  "creation.error.length": "ファーストネームを短くしてください。",
+  "creation.hint": "チャンネル名は #times_ の後にファーストネームを小文字にしたものになります。times チャンネルを作成できるのは原則1人1回です。",
+  "creation.name": "ファーストネーム",
+  "creation.submit": "作成",
+  "creation.title": "times チャンネルを作成",
+  "home.creation": "times チャンネルを作成",
   "home.role.owner": "あなたはオーナーです。",
   "home.times": "times チャンネル",
   "home.times.available": "作成できます。",
   "home.times.excluded": "作成対象外です。",
   "home.times.holder": "作成済みです。",
+  "home.times.requested": "{channel} を申請しました。",
   "home.times.used": "削除されています。"
 }

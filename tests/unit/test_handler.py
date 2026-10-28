@@ -1,5 +1,6 @@
 import collections.abc
 import datetime
+import json
 import typing
 import unittest.mock
 
@@ -9,13 +10,16 @@ import slack_sdk
 import slack_sdk.errors
 
 import timesforge.configuration
+import timesforge.localisation
 import timesforge.slack.handler
 import timesforge.slack.permission
 import timesforge.slack.reconciliation
 import timesforge.slack.view
 import timesforge.storage
+import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.registry
+import timesforge.times.request
 
 CREATION = datetime.datetime(2026, 10, 28, 15, 0, tzinfo = datetime.UTC)
 
@@ -30,6 +34,8 @@ EVENTS_CHANNEL = [
     ({'type': 'channel_deleted', 'channel': 'CXXX3'}, 'UXXX3', [('deleted', 'times_zzz')], [('UXXX3', 'used')]),
     ({'type': 'channel_unarchive', 'channel': 'CXXX1', 'user': 'UXXX1'}, 'UXXX1', [('active', 'times_xxx')], [])
 ]
+
+NAMES_INVALID = [(' ', 'empty'), ('漢字', 'characters'), ('X' * 75, 'length')]
 
 @pytest.fixture
 def application(
@@ -81,6 +87,28 @@ def change(
 
     return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'event_callback', 'team_id': 'TXXX', 'event': event}, mode = 'socket_mode'))
 
+def press(
+    application: slack_bolt.App,
+    user: str,
+    action: str
+) -> slack_bolt.BoltResponse:
+
+    return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'block_actions', 'team': {'id': 'TXXX'}, 'user': {'id': user}, 'trigger_id': 'xxx', 'actions': [{'type': 'button', 'action_id': action}]}, mode = 'socket_mode'))
+
+def submit(
+    application: slack_bolt.App,
+    user: str,
+    view: dict[str, typing.Any]
+) -> slack_bolt.BoltResponse:
+
+    return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'view_submission', 'team': {'id': 'TXXX'}, 'user': {'id': user}, 'view': {'id': 'VXXX', 'type': 'modal', 'state': {'values': {}}} | view}, mode = 'socket_mode'))
+
+def named(
+    first_name: str
+) -> dict[str, typing.Any]:
+
+    return {'callback_id': timesforge.slack.view.CREATION_CALLBACK, 'state': {'values': {timesforge.slack.view.NAME_INPUT: {timesforge.slack.view.NAME_INPUT: {'type': 'plain_text_input', 'value': first_name}}}}}
+
 def calls(
     workspace: dict[str, typing.Any],
     method: str
@@ -102,7 +130,7 @@ def test_handler_home_publication(
     timesforge.times.registry.RegistryIO(database).save('TXXX', channel)
 
     assert home(application, user, 'home').status == 200
-    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = 'holder', role = role, language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = 'holder', request = None, role = role, language = 'ja')}]
 
 def test_handler_home_locale(
     application: slack_bolt.App,
@@ -113,7 +141,7 @@ def test_handler_home_locale(
 
     assert home(application, 'UXXX1', 'home').status == 200
     assert calls(workspace, 'users.info') == [{'user': 'UXXX1', 'include_locale': True}]
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, role = 'owner', language = 'en')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, request = None, role = 'owner', language = 'en')}]
 
 @pytest.mark.parametrize(('tab', 'count'), TABS_OPENED)
 def test_handler_home_tab(
@@ -125,7 +153,7 @@ def test_handler_home_tab(
 
     home(application, 'UXXX1', tab)
 
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, role = 'owner', language = 'ja')}] * count
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, request = None, role = 'owner', language = 'ja')}] * count
 
 @pytest.mark.parametrize(('event', 'holder', 'states', 'views'), EVENTS_CHANNEL)
 def test_handler_channel_change(
@@ -140,7 +168,7 @@ def test_handler_channel_change(
 
     assert change(application, event).status == 200
     assert [(channel.status, channel.channel_name) for channel in registry.find('TXXX', holder)] == states
-    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = refusal, role = 'member', language = 'ja')} for user, refusal in views]
+    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = refusal, request = None, role = 'member', language = 'ja')} for user, refusal in views]
 
 def test_handler_channel_recovery(
     workspace: dict[str, typing.Any],
@@ -151,7 +179,7 @@ def test_handler_channel_recovery(
     recover('TXXX', CREATION)
 
     assert [channel.status for holder in ('UXXX1', 'UXXX2', 'UXXX3') for channel in registry.find('TXXX', holder)] == ['active', 'archived', 'deleted']
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', role = 'member', language = 'ja')}, {'user_id': 'UXXX3', 'view': timesforge.slack.view.home(refusal = 'used', role = 'member', language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', request = None, role = 'member', language = 'ja')}, {'user_id': 'UXXX3', 'view': timesforge.slack.view.home(refusal = 'used', request = None, role = 'member', language = 'ja')}]
 
 @pytest.mark.usefixtures('registry')
 def test_handler_recovery_failure(
@@ -167,3 +195,53 @@ def test_handler_recovery_failure(
 
     assert 'Times channels were not reconciled' in caplog.text
     assert calls(workspace, 'views.publish') == []
+
+def test_handler_creation_modal(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any]
+) -> None:
+
+    assert press(application, 'UXXX2', timesforge.slack.view.CREATION_ACTION).status == 200
+    assert calls(workspace, 'views.open') == [{'trigger_id': 'xxx', 'view': timesforge.slack.view.collect(language = 'ja')}]
+
+def test_handler_creation_reservation(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    response = submit(application, 'UXXX2', named(' Yyy '))
+    requests = timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2')
+
+    assert (response.status, response.body) == (200, '')
+    assert [(request.first_name, request.channel_name, request.status) for request in requests] == [('Yyy', 'times_yyy', 'reserved')]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, request = requests[0], role = 'member', language = 'ja')}]
+
+@pytest.mark.parametrize(('first_name', 'reason'), NAMES_INVALID)
+def test_handler_name_invalid(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database,
+    first_name: str,
+    reason: timesforge.times.naming.Reason
+) -> None:
+
+    response = submit(application, 'UXXX2', named(first_name))
+
+    assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'creation.error.{reason}', 'ja')}}
+    assert timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2') == []
+    assert calls(workspace, 'views.publish') == []
+
+def test_handler_creation_refusal(
+    application: slack_bolt.App,
+    database: timesforge.storage.Database
+) -> None:
+
+    channel = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX2', first_name = 'Xxx', channel_name = 'times_xxx', creation = CREATION)
+
+    timesforge.times.registry.RegistryIO(database).save('TXXX', channel)
+
+    response = submit(application, 'UXXX2', named('Yyy'))
+
+    assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate('home.times.holder', 'ja')}}
+    assert timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX2') == []

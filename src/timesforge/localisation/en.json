@@ -1,8 +1,18 @@
 {
+  "creation.close": "Cancel",
+  "creation.error.characters": "Use letters A to Z, with hyphens only between them.",
+  "creation.error.empty": "Enter your first name.",
+  "creation.error.length": "Shorten your first name.",
+  "creation.hint": "Your channel is named #times_ followed by your first name in lower case. Each member can normally create one times channel.",
+  "creation.name": "First name",
+  "creation.submit": "Create",
+  "creation.title": "Create times channel",
+  "home.creation": "Create times channel",
   "home.role.owner": "You are the owner.",
   "home.times": "times channel",
   "home.times.available": "You can create one.",
   "home.times.excluded": "You cannot create one.",
   "home.times.holder": "You have one.",
+  "home.times.requested": "You asked for {channel}.",
   "home.times.used": "Yours was deleted."
 }

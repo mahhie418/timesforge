@@ -14,6 +14,7 @@ import timesforge.times.registry
 type Status = typing.Literal['reserved', 'pending_name_resolution', 'creating', 'reconciling', 'created', 'inviting', 'completed', 'failed']
 
 _REQUEST_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND request_id = ?'
+_USER_SELECT = 'SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? ORDER BY request_id'
 _OPEN_SELECT = "SELECT request_id, user_id, first_name, channel_name, request_status, grant_id, channel_id, error_message, create_time FROM request WHERE workspace_id = ? AND user_id = ? AND request_status IN ('reserved', 'pending_name_resolution', 'creating', 'reconciling')"
 _NAME_SELECT = "SELECT 1 FROM channel WHERE workspace_id = ? AND channel_name = ? AND channel_status != 'deleted' UNION ALL SELECT 1 FROM request WHERE workspace_id = ? AND channel_name = ? AND request_status IN ('reserved', 'creating', 'reconciling')"
 _GRANT_RESERVE = "UPDATE recreation SET grant_status = 'reserved', reserve_time = ? WHERE workspace_id = ? AND user_id = ? AND grant_status = 'unused' RETURNING grant_id"
@@ -119,6 +120,24 @@ class RequestIO:
         row = self._database.connect().execute(_REQUEST_SELECT, (workspace_id, request_id)).fetchone()
 
         return None if row is None else _decode(row)
+
+    def find(
+        self,
+        workspace_id: str,
+        user_id: str
+    ) -> list[Request]:
+
+        """Finds the requests of a member.
+
+        Args:
+            workspace_id: Slack workspace ID.
+            user_id: Slack user ID of the member.
+
+        Returns:
+            The requests, oldest first.
+        """
+
+        return [_decode(row) for row in self._database.connect().execute(_USER_SELECT, (workspace_id, user_id))]
 
     def reserve(
         self,

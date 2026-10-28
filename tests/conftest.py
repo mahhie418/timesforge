@@ -47,6 +47,7 @@ class Slack(slack_sdk.web.WebClient):
             case 'conversations.members': data = {'ok': True, **page('members', self.workspace['members'].get(arguments['channel'], []), arguments)}
             case 'conversations.create': return self.create(arguments)
             case 'conversations.invite': return self.invite(arguments)
+            case 'views.open': data = {'ok': True, 'view': {'id': 'VXXX'}}
             case 'views.publish': data = {'ok': True}
             case _: raise NotImplementedError(api_method)
 

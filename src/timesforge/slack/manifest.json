@@ -33,6 +33,9 @@
         "channel_unarchive"
       ]
     },
+    "interactivity": {
+      "is_enabled": true
+    },
     "socket_mode_enabled": true
   }
 }

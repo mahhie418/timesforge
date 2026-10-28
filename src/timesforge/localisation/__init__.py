@@ -29,7 +29,8 @@ def choose(
 
 def translate(
     key: str,
-    language: timesforge.configuration.Language
+    language: timesforge.configuration.Language,
+    **values: str
 ) -> str:
 
     """Gives a message in a language.
@@ -37,12 +38,13 @@ def translate(
     Args:
         key: Key of the message, such as home.times.
         language: The language.
+        **values: Values for the placeholders in the message, such as channel.
 
     Returns:
         The message.
     """
 
-    return _messages(language)[key]
+    return _messages(language)[key].format(**values)
 
 @functools.cache
 def _messages(

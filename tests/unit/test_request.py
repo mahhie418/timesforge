@@ -60,6 +60,21 @@ def test_request_channel_reservation(
 
     assert request == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'reserved', grant_id = None, creation = CREATION)
 
+def test_request_member_history(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.request.RequestIO(database)
+
+    failure = store.reserve('TXXX', 'UXXX1', 'Xxx', CREATION)
+    store.start('TXXX', failure.request_id, CREATION); store.fail('TXXX', failure.request_id, error = 'xxx', now = CREATION)
+
+    retry = store.reserve('TXXX', 'UXXX1', 'Yyy', CHANGE)
+    store.reserve('TYYY', 'UXXX1', 'Xxx', CHANGE)
+
+    assert [request.request_id for request in store.find('TXXX', 'UXXX1')] == [failure.request_id, retry.request_id]
+    assert store.find('TXXX', 'UXXX2') == []
+
 def test_request_channel_repetition(
     database: timesforge.storage.Database
 ) -> None:

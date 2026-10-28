@@ -31,3 +31,7 @@ def test_localisation_locale_choice(
 def test_localisation_message_translation() -> None:
 
     assert [timesforge.localisation.translate('home.times', language) for language in ('en', 'ja')] == ['times channel', 'times チャンネル']
+
+def test_localisation_value_insertion() -> None:
+
+    assert timesforge.localisation.translate('home.times.requested', 'ja', channel = '#times_xxx') == '#times_xxx を申請しました。'
