@@ -48,19 +48,26 @@ def home(
 
     """Builds the App Home, which shows whether the viewer may create a times channel.
 
-    While the viewer may, a button at the right opens the modal that asks for
-    their first name. While their request is approved, waits for the owner
-    because its name is taken, or is being created, the App Home shows it
-    instead, and after Slack refused to create its channel, it shows why next
-    to the button. Below, the times channels that the viewer holds or held
-    are listed with the day when each was created, archived or deleted, and
-    each that is not deleted links to the channel. The owner also sees their
-    own role and, under a heading, the requests that wait for them because
-    their names are taken, each with a button that chooses another name, and
-    the members excluded from creating times channels and those with
-    recreation grants that are not used up, each with a button that changes
-    them, a button that reviews the holders of the imported channels, and
-    one that shows the history.
+    The App Home is published again whenever it is opened, so that it always
+    shows the latest state. While the viewer may create a times channel, it
+    tells what a times channel is, how it is named and that each member
+    normally creates one, and a button at the right opens the modal that
+    asks for their first name; a member whose channel was deleted sees that
+    the owner let them create one more. While their request is approved,
+    waits for the owner because its name is taken, or is being created, the
+    App Home shows it instead, and after Slack refused to create its channel,
+    it shows why next to the button. A member who is excluded, or whose
+    channel was deleted without a recreation grant, sees so and no button.
+
+    Below, the times channels that the viewer holds or held are listed with
+    the day when each was created, archived or deleted, and each that is not
+    deleted links to the channel. The owner also sees their own role and,
+    under a heading, the requests that wait for them because their names are
+    taken, each with a button that chooses another name, and the members
+    excluded from creating times channels and those with recreation grants
+    that are not used up, each with a button that changes them, a button
+    that reviews the holders of the imported channels, and one that shows
+    the history.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
@@ -84,12 +91,13 @@ def home(
         case timesforge.times.request.Request(status = 'creating' | 'reconciling' | 'created' | 'inviting'): text, button = timesforge.localisation.translate('home.times.creating', language, channel = f'#{request.channel_name}'), None
         case _ if refusal is None and not eligible: text, button = timesforge.localisation.translate('home.times.ineligible', language), None
         case timesforge.times.request.Request(status = 'failed') if refusal is None: text, button = timesforge.localisation.translate('home.times.failed', language, channel = f'#{request.channel_name}', error = str(request.error)), _action(CREATION_ACTION, timesforge.localisation.translate('home.creation', language), style = 'primary')
-        case _ if refusal is None: text, button = timesforge.localisation.translate('home.times.available', language), _action(CREATION_ACTION, timesforge.localisation.translate('home.creation', language), style = 'primary')
+        case _ if refusal is None: text, button = timesforge.localisation.translate('home.times.granted' if channels else 'home.times.available', language), _action(CREATION_ACTION, timesforge.localisation.translate('home.creation', language), style = 'primary')
         case _: text, button = timesforge.localisation.translate(f'home.times.{refusal}', language), None
 
     blocks = []
 
     if role != 'member': blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': timesforge.localisation.translate(f'home.role.{role}', language)}]})
+    if button is not None: blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': timesforge.localisation.translate('home.prompt', language, product = timesforge.product.NAME)}})
 
     blocks.append(_item(timesforge.localisation.translate('home.times', language), text, button))
 

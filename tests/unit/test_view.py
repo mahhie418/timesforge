@@ -15,6 +15,8 @@ import timesforge.times.request
 
 CREATION = datetime.datetime(2026, 10, 28, 15, 0, tzinfo = datetime.UTC)
 
+PROMPT = 'A times channel is your own public channel, `#times_(First Name)`, where you post whatever you like. Enter your first name, and timesforge creates the channel and invites the members of the workspace. Each member can normally create one times channel, once.'
+
 REQUEST_RESERVED = timesforge.times.request.Request(request_id = 1, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'reserved', grant_id = None, creation = CREATION)
 REQUEST_PENDING = timesforge.times.request.Request(request_id = 1, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'pending_name_resolution', grant_id = None, creation = CREATION)
 REQUEST_CREATING = timesforge.times.request.Request(request_id = 1, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'reconciling', grant_id = None, error = 'xxx', creation = CREATION)
@@ -22,14 +24,14 @@ REQUEST_FAILED = timesforge.times.request.Request(request_id = 1, user_id = 'UXX
 REQUEST_COMPLETED = timesforge.times.request.Request(request_id = 1, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'completed', grant_id = None, channel_id = 'CXXX1', creation = CREATION)
 
 STATES_HOME = [
-    (None, None, 'en', ['*times channel*\nYou can create one.'], [timesforge.slack.view.CREATION_ACTION]),
+    (None, None, 'en', [PROMPT, '*times channel*\nYou can create one.'], [timesforge.slack.view.CREATION_ACTION]),
     ('holder', None, 'ja', ['*times チャンネル*\n作成済みです。'], []),
-    ('used', None, 'en', ['*times channel*\nYours was deleted.'], []),
+    ('used', None, 'en', ['*times channel*\nYours was deleted. Creating another needs permission from the owner.'], []),
     ('excluded', None, 'en', ['*times channel*\nYou cannot create one.'], []),
     (None, REQUEST_RESERVED, 'en', ['*times channel*\n#times_xxx is approved.'], []),
     (None, REQUEST_PENDING, 'en', ['*times channel*\n#times_xxx is taken. The owner will choose another name.'], []),
     ('holder', REQUEST_CREATING, 'en', ['*times channel*\n#times_xxx is being created.'], []),
-    (None, REQUEST_FAILED, 'ja', ['*times チャンネル*\n#times_xxx を作成できませんでした (restricted_action)。もう一度作成できます。'], [timesforge.slack.view.CREATION_ACTION]),
+    (None, REQUEST_FAILED, 'en', [PROMPT, '*times channel*\n#times_xxx could not be created (restricted_action). You can try again.'], [timesforge.slack.view.CREATION_ACTION]),
     ('holder', REQUEST_COMPLETED, 'en', ['*times channel*\nYou have one.'], [])
 ]
 
@@ -95,14 +97,22 @@ def test_view_home_channels() -> None:
 
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'section'][1:] == ['*Your times channels*\n#times_xxx (deleted <!date^1793199600^{date_short}|2026-10-28>)\n<#CXXX2> (archived <!date^1793199600^{date_short}|2026-10-28>)\n<#CXXX3> (created <!date^1793199600^{date_short}|2026-10-28>)']
 
+def test_view_home_recreation() -> None:
+
+    channel = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'deleted', creation = CREATION, deletion = CREATION)
+    view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [channel], exclusions = [], grants = [], conflicts = [], role = 'member', language = 'en')
+
+    assert [block['text']['text'] for block in view['blocks']][:2] == [PROMPT, '*times channel*\nThe owner let you create one more.']
+    assert [block['accessory']['action_id'] for block in view['blocks'] if 'accessory' in block] == [timesforge.slack.view.CREATION_ACTION]
+
 def test_view_home_owner() -> None:
 
     view = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, grants = GRANTS_LISTED, conflicts = [], role = 'owner', language = 'en')
     member = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, grants = GRANTS_LISTED, conflicts = [], role = 'member', language = 'en')
 
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'header'] == ['Owner actions']
-    assert [(block['text']['text'], block.get('accessory', {}).get('action_id')) for block in view['blocks'] if block['type'] == 'section'][1:] == [('*Name conflicts*\nNone', None), ('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION), ('*Imported channels*\nCheck who holds the times channels created before timesforge, and correct them.', timesforge.slack.view.IMPORT_ACTION), ('*History*\nThe latest changes to the times channels and to who may create them.', timesforge.slack.view.HISTORY_ACTION)]
-    assert [block['type'] for block in member['blocks']] == ['section']
+    assert [(block['text']['text'], block.get('accessory', {}).get('action_id')) for block in view['blocks'] if block['type'] == 'section'][2:] == [('*Name conflicts*\nNone', None), ('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION), ('*Imported channels*\nCheck who holds the times channels created before timesforge, and correct them.', timesforge.slack.view.IMPORT_ACTION), ('*History*\nThe latest changes to the times channels and to who may create them.', timesforge.slack.view.HISTORY_ACTION)]
+    assert [block['type'] for block in member['blocks']] == ['section', 'section']
 
 def test_view_home_conflicts() -> None:
 

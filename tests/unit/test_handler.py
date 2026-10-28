@@ -13,6 +13,7 @@ import slack_sdk.errors
 
 import timesforge.configuration
 import timesforge.localisation
+import timesforge.product
 import timesforge.slack.handler
 import timesforge.slack.permission
 import timesforge.slack.reconciliation
@@ -220,6 +221,20 @@ def test_handler_home_locale(
     assert home(application, 'UXXX1', 'home').status == 200
     assert calls(workspace, 'users.info') == [{'user': 'UXXX1', 'include_locale': True}]
     assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], grants = [], conflicts = [], role = 'owner', language = 'en')}]
+
+def test_handler_home_prompt(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.onboarding.OnboardingIO(database)
+    store.claim('TXXX', 'UXXX2', channel_id = 'CXXX0', event_id = 'EvXXX', now = CREATION); store.send('TXXX', 'UXXX2', CREATION)
+    store.fail('TXXX', 'UXXX2', error = 'xxx', now = CREATION)
+
+    for _ in range(2): home(application, 'UXXX2', 'home')
+
+    assert [arguments['view']['blocks'][0]['text']['text'] for arguments in calls(workspace, 'views.publish')] == [timesforge.localisation.translate('home.prompt', 'ja', product = timesforge.product.NAME)] * 2
 
 @pytest.mark.parametrize(('tab', 'count'), TABS_OPENED)
 def test_handler_home_tab(
