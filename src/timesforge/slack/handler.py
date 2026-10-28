@@ -19,12 +19,15 @@ import timesforge.slack.reconciliation
 import timesforge.slack.view
 import timesforge.storage
 import timesforge.times.exclusion
+import timesforge.times.history
 import timesforge.times.invitation
 import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.recreation
 import timesforge.times.registry
 import timesforge.times.request
+
+HISTORY_LIMIT = 50
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,7 +69,9 @@ def register(
     name that the owner chose is created as an approved one is, for the
     member who asked. Excluding a member withdraws their request that waits
     to be created or for the owner, and the App Home of the member shows
-    each change.
+    each change. The owner also reviews the holders of the imported times
+    channels and corrects them, and reads the latest `HISTORY_LIMIT` changes
+    in the history.
 
     Args:
         application: The application.
@@ -89,6 +94,7 @@ def register(
     invitations = timesforge.times.invitation.InvitationIO(database)
     exclusions = timesforge.times.exclusion.ExclusionIO(database)
     recreations = timesforge.times.recreation.RecreationIO(database)
+    log = timesforge.times.history.HistoryIO(database)
     guard = [timesforge.slack.permission.restrict(settings)]
 
     def inspect(
@@ -387,6 +393,63 @@ def register(
 
         for person in dict.fromkeys([owner, user]): refresh(team, person)
 
+    def inquire(
+        ack: slack_bolt.Ack,
+        body: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        ack()
+
+        if context.team_id is None or context.user_id is None: return
+
+        channels = [channel for channel in registry.scan(context.team_id) if channel.source == 'imported']
+
+        application.client.views_open(trigger_id = body['trigger_id'], view = timesforge.slack.view.review(channels = channels, language = choose(context.user_id)))
+
+    def reassign(
+        ack: slack_bolt.Ack,
+        view: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        team, owner = context.team_id, context.user_id
+
+        if team is None or owner is None: return
+
+        values = view['state']['values']
+        channel_id = values[timesforge.slack.view.CHANNEL_INPUT][timesforge.slack.view.CHANNEL_INPUT]['selected_option']['value']
+        holder = values[timesforge.slack.view.MEMBER_INPUT][timesforge.slack.view.MEMBER_INPUT]['selected_user']
+        former = registry.load(team, channel_id)
+        language = choose(owner)
+        key = None if inspect(holder)[0] else 'review.error.ineligible'
+
+        try:
+
+            if key is None and not registry.reassign(team, channel_id, holder, owner_id = owner, now = datetime.datetime.now(datetime.UTC)): key = 'review.error.unchanged'
+
+        except timesforge.times.registry.ChannelDuplicateError:
+
+            key = 'review.error.held'
+
+        if key is not None: ack(response_action = 'errors', errors = {timesforge.slack.view.MEMBER_INPUT: timesforge.localisation.translate(key, language)}); return
+
+        ack()
+
+        for person in dict.fromkeys([owner, holder] + ([former.holder_id] if former else [])): refresh(team, person)
+
+    def retrace(
+        ack: slack_bolt.Ack,
+        body: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        ack()
+
+        if context.team_id is None or context.user_id is None: return
+
+        application.client.views_open(trigger_id = body['trigger_id'], view = timesforge.slack.view.trace(entries = log.load(context.team_id, HISTORY_LIMIT), language = choose(context.user_id)))
+
     application.event('app_home_opened')(publish)
     application.event('channel_archive')(follow)
     application.event('channel_deleted')(follow)
@@ -400,6 +463,9 @@ def register(
     application.view(timesforge.slack.view.EXCLUSION_CALLBACK, middleware = guard)(exclude)
     application.action(timesforge.slack.view.RECREATION_ACTION, middleware = guard)(offer)
     application.view(timesforge.slack.view.RECREATION_CALLBACK, middleware = guard)(grant)
+    application.action(timesforge.slack.view.IMPORT_ACTION, middleware = guard)(inquire)
+    application.view(timesforge.slack.view.IMPORT_CALLBACK, middleware = guard)(reassign)
+    application.action(timesforge.slack.view.HISTORY_ACTION, middleware = guard)(retrace)
 
     return recover
 

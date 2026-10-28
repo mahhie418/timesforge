@@ -50,6 +50,8 @@ EXCLUSIONS_REFUSED = [
 
 RESOLUTIONS_REFUSED = [('Xxx', 'resolution.error.taken'), ('漢字', 'creation.error.characters')]
 
+IMPORTS_REFUSED = [('UXXX5', 'review.error.ineligible'), ('UXXX2', 'review.error.held'), ('UXXX1', 'review.error.unchanged')]
+
 GRANTS_REFUSED = [
     ('UXXX1', 'grant', 'recreation.error.holder'),
     ('UXXX2', 'grant', 'recreation.error.grant'),
@@ -159,6 +161,13 @@ def excluded(
 ) -> dict[str, typing.Any]:
 
     return {'callback_id': timesforge.slack.view.EXCLUSION_CALLBACK, 'state': {'values': {timesforge.slack.view.MEMBER_INPUT: {timesforge.slack.view.MEMBER_INPUT: {'type': 'users_select', 'selected_user': user}}, timesforge.slack.view.CHOICE_INPUT: {timesforge.slack.view.CHOICE_INPUT: {'type': 'radio_buttons', 'selected_option': {'value': choice}}}, timesforge.slack.view.REASON_INPUT: {timesforge.slack.view.REASON_INPUT: {'type': 'plain_text_input', 'value': reason}}}}}
+
+def reassigned(
+    channel_id: str,
+    user: str
+) -> dict[str, typing.Any]:
+
+    return {'callback_id': timesforge.slack.view.IMPORT_CALLBACK, 'state': {'values': {timesforge.slack.view.CHANNEL_INPUT: {timesforge.slack.view.CHANNEL_INPUT: {'type': 'static_select', 'selected_option': {'value': channel_id}}}, timesforge.slack.view.MEMBER_INPUT: {timesforge.slack.view.MEMBER_INPUT: {'type': 'users_select', 'selected_user': user}}}}}
 
 def granted(
     user: str,
@@ -557,6 +566,61 @@ def test_handler_recreation_refusal(
     response = submit(application, 'UXXX1', granted(user, choice))
 
     assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.MEMBER_INPUT: timesforge.localisation.translate(key, 'ja')}}
+
+def test_handler_import_review(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    registry = timesforge.times.registry.RegistryIO(database)
+    imported = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)
+    created = timesforge.times.registry.Channel(channel_id = 'CXXX2', holder_id = 'UXXX2', first_name = 'Yyy', channel_name = 'times_yyy', creation = CREATION)
+
+    for channel in (imported, created): registry.save('TXXX', channel)
+
+    assert press(application, 'UXXX2', timesforge.slack.view.IMPORT_ACTION).status == 200
+    assert calls(workspace, 'views.open') == []
+    assert press(application, 'UXXX1', timesforge.slack.view.IMPORT_ACTION).status == 200
+    assert calls(workspace, 'views.open') == [{'trigger_id': 'xxx', 'view': timesforge.slack.view.review(channels = [imported], language = 'ja')}]
+
+    response = submit(application, 'UXXX1', reassigned('CXXX1', 'UXXX3'))
+
+    assert (response.status, response.body) == (200, '')
+    assert [channel.channel_id for channel in registry.find('TXXX', 'UXXX3')] == ['CXXX1']
+    assert [arguments['user_id'] for arguments in calls(workspace, 'views.publish')] == ['UXXX1', 'UXXX3']
+
+@pytest.mark.parametrize(('user', 'key'), IMPORTS_REFUSED)
+def test_handler_import_refusal(
+    application: slack_bolt.App,
+    database: timesforge.storage.Database,
+    user: str,
+    key: str
+) -> None:
+
+    registry = timesforge.times.registry.RegistryIO(database)
+    imported = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)
+    created = timesforge.times.registry.Channel(channel_id = 'CXXX2', holder_id = 'UXXX2', first_name = 'Yyy', channel_name = 'times_yyy', creation = CREATION)
+
+    for channel in (imported, created): registry.save('TXXX', channel)
+
+    response = submit(application, 'UXXX1', reassigned('CXXX1', user))
+
+    assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.MEMBER_INPUT: timesforge.localisation.translate(key, 'ja')}}
+    assert [channel.holder_id for channel in registry.scan('TXXX')] == ['UXXX1', 'UXXX2']
+
+def test_handler_history_modal(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    timesforge.times.exclusion.ExclusionIO(database).add('TXXX', timesforge.times.exclusion.Exclusion(user_id = 'UXXX2', reason = 'xxx', owner_id = 'UXXX1', creation = CREATION))
+
+    assert press(application, 'UXXX2', timesforge.slack.view.HISTORY_ACTION).status == 200
+    assert calls(workspace, 'views.open') == []
+    assert press(application, 'UXXX1', timesforge.slack.view.HISTORY_ACTION).status == 200
+    assert calls(workspace, 'views.open') == [{'trigger_id': 'xxx', 'view': timesforge.slack.view.trace(entries = timesforge.times.history.HistoryIO(database).load('TXXX', timesforge.slack.handler.HISTORY_LIMIT), language = 'ja')}]
 
 def test_handler_thread_detachment() -> None:
 

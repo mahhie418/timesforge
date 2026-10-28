@@ -7,6 +7,7 @@ import timesforge.configuration
 import timesforge.localisation
 import timesforge.slack.permission
 import timesforge.times.exclusion
+import timesforge.times.history
 import timesforge.times.naming
 import timesforge.times.policy
 import timesforge.times.recreation
@@ -21,9 +22,13 @@ RECREATION_ACTION = 'recreation_action'
 RECREATION_CALLBACK = 'recreation_callback'
 RESOLUTION_ACTION = 'resolution_action'
 RESOLUTION_CALLBACK = 'resolution_callback'
+IMPORT_ACTION = 'import_action'
+IMPORT_CALLBACK = 'import_callback'
+HISTORY_ACTION = 'history_action'
 
 NAME_INPUT = 'name_input'
 MEMBER_INPUT = 'member_input'
+CHANNEL_INPUT = 'channel_input'
 CHOICE_INPUT = 'choice_input'
 REASON_INPUT = 'reason_input'
 
@@ -53,7 +58,8 @@ def home(
     their names are taken, each with a button that chooses another name, and
     the members excluded from creating times channels and those with
     recreation grants that are not used up, each with a button that changes
-    them.
+    them, a button that reviews the holders of the imported channels, and
+    one that shows the history.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
@@ -98,6 +104,8 @@ def home(
 
         blocks.append(_item(timesforge.localisation.translate('home.exclusions', language), ', '.join(f'<@{exclusion.user_id}>' for exclusion in exclusions) or timesforge.localisation.translate('home.exclusions.none', language), _action(EXCLUSION_ACTION, timesforge.localisation.translate('home.exclusions.action', language))))
         blocks.append(_item(timesforge.localisation.translate('home.recreations', language), ', '.join(f'<@{grant.user_id}>' for grant in grants) or timesforge.localisation.translate('home.recreations.none', language), _action(RECREATION_ACTION, timesforge.localisation.translate('home.recreations.action', language))))
+        blocks.append(_item(timesforge.localisation.translate('home.imports', language), timesforge.localisation.translate('home.imports.text', language), _action(IMPORT_ACTION, timesforge.localisation.translate('home.imports.action', language))))
+        blocks.append(_item(timesforge.localisation.translate('home.history', language), timesforge.localisation.translate('home.history.text', language), _action(HISTORY_ACTION, timesforge.localisation.translate('home.history.action', language))))
 
     return {'type': 'home', 'blocks': blocks}
 
@@ -253,6 +261,62 @@ def resolve(
 
     return {'type': 'modal', 'callback_id': RESOLUTION_CALLBACK, 'private_metadata': str(request.request_id), 'title': _plain(timesforge.localisation.translate('resolution.title', language)), 'submit': _plain(timesforge.localisation.translate('resolution.submit', language)), 'close': _plain(timesforge.localisation.translate('resolution.close', language)), 'blocks': blocks}
 
+def review(
+    *,
+    channels: list[timesforge.times.registry.Channel],
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal in which the owner reviews the holders of the imported times channels, and changes one.
+
+    Args:
+        channels: The imported times channels that are not deleted.
+        language: Language of the owner.
+
+    Returns:
+        The view, as views.open takes it.
+    """
+
+    title = timesforge.localisation.translate('review.title', language)
+
+    if not channels: return _modal(title, timesforge.localisation.translate('review.none', language), language)
+
+    lines = [timesforge.localisation.translate('review.entry', language, channel = f'<#{channel.channel_id}>', user = f'<@{channel.holder_id}>') for channel in channels]
+    options = [{'text': _plain(f'#{channel.channel_name}'), 'value': channel.channel_id} for channel in channels]
+
+    blocks = [
+        {'type': 'section', 'text': {'type': 'mrkdwn', 'text': '\n'.join(lines)}},
+        {'type': 'input', 'block_id': CHANNEL_INPUT, 'label': _plain(timesforge.localisation.translate('review.channel', language)), 'element': {'type': 'static_select', 'action_id': CHANNEL_INPUT, 'options': options}},
+        {'type': 'input', 'block_id': MEMBER_INPUT, 'label': _plain(timesforge.localisation.translate('review.member', language)), 'hint': _plain(timesforge.localisation.translate('review.hint', language)), 'element': {'type': 'users_select', 'action_id': MEMBER_INPUT}}
+    ]
+
+    return {'type': 'modal', 'callback_id': IMPORT_CALLBACK, 'title': _plain(title), 'submit': _plain(timesforge.localisation.translate('review.submit', language)), 'close': _plain(timesforge.localisation.translate('review.close', language)), 'blocks': blocks}
+
+def trace(
+    *,
+    entries: list[timesforge.times.history.Entry],
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal that shows the owner the latest changes in the history, newest first.
+
+    Args:
+        entries: The changes, newest first.
+        language: Language of the owner.
+
+    Returns:
+        The view, as views.open takes it.
+    """
+
+    title = timesforge.localisation.translate('history.title', language)
+
+    if not entries: return _modal(title, timesforge.localisation.translate('history.none', language), language)
+
+    unknown = timesforge.localisation.translate('history.unknown', language)
+    blocks = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': f"{_time(entry.creation)} {timesforge.localisation.translate(f'history.{entry.action}', language, actor = f'<@{entry.actor_id}>' if entry.actor_id else unknown, target = f'<@{entry.target_id}>', channel = f'<#{entry.channel_id}>', name = entry.details.get('channel_name', ''))}"}} for entry in entries]
+
+    return {'type': 'modal', 'title': _plain(title), 'close': _plain(timesforge.localisation.translate('modal.close', language)), 'blocks': blocks}
+
 def _describe(
     channel: timesforge.times.registry.Channel,
     language: timesforge.configuration.Language
@@ -304,6 +368,12 @@ def _date(
 ) -> str:
 
     return f'<!date^{int(moment.timestamp())}^{{date_short}}|{moment:%Y-%m-%d}>'
+
+def _time(
+    moment: datetime.datetime
+) -> str:
+
+    return f'<!date^{int(moment.timestamp())}^{{date_short}} {{time}}|{moment:%Y-%m-%d %H:%M} UTC>'
 
 def _text(
     title: str,

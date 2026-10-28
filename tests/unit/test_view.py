@@ -7,6 +7,7 @@ import timesforge.configuration
 import timesforge.slack.permission
 import timesforge.slack.view
 import timesforge.times.exclusion
+import timesforge.times.history
 import timesforge.times.policy
 import timesforge.times.recreation
 import timesforge.times.registry
@@ -57,6 +58,11 @@ EXCLUSIONS_LISTED = [
 
 GRANTS_LISTED = [timesforge.times.recreation.Grant(grant_id = 1, user_id = 'UXXX4', status = 'unused', owner_id = 'UXXX1', granting = CREATION)]
 
+ENTRIES_TRACED = [
+    timesforge.times.history.Entry(action = 'rename', target_id = 'UXXX1', channel_id = 'CXXX1', details = {'channel_name': 'xxx'}, creation = CREATION),
+    timesforge.times.history.Entry(action = 'exclude', actor_id = 'UXXX1', target_id = 'UXXX2', details = {'reason': 'xxx'}, creation = CREATION)
+]
+
 ROLES_MESSAGE = [
     ('owner', ['You are the owner.']),
     ('member', [])
@@ -95,7 +101,7 @@ def test_view_home_owner() -> None:
     member = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, grants = GRANTS_LISTED, conflicts = [], role = 'member', language = 'en')
 
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'header'] == ['Owner actions']
-    assert [(block['text']['text'], block.get('accessory', {}).get('action_id')) for block in view['blocks'] if block['type'] == 'section'][1:] == [('*Name conflicts*\nNone', None), ('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION)]
+    assert [(block['text']['text'], block.get('accessory', {}).get('action_id')) for block in view['blocks'] if block['type'] == 'section'][1:] == [('*Name conflicts*\nNone', None), ('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION), ('*Imported channels*\nCheck who holds the times channels created before timesforge, and correct them.', timesforge.slack.view.IMPORT_ACTION), ('*History*\nThe latest changes to the times channels and to who may create them.', timesforge.slack.view.HISTORY_ACTION)]
     assert [block['type'] for block in member['blocks']] == ['section']
 
 def test_view_home_conflicts() -> None:
@@ -129,6 +135,25 @@ def test_view_recreation_modal() -> None:
     assert view['callback_id'] == timesforge.slack.view.RECREATION_CALLBACK
     assert view['blocks'][0]['text']['text'].endswith('\n<@UXXX4>')
     assert [block['block_id'] for block in view['blocks'] if block['type'] == 'input'] == [timesforge.slack.view.MEMBER_INPUT, timesforge.slack.view.CHOICE_INPUT]
+
+def test_view_import_modal() -> None:
+
+    channel = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)
+    view = timesforge.slack.view.review(channels = [channel], language = 'en')
+    empty = timesforge.slack.view.review(channels = [], language = 'en')
+
+    assert view['callback_id'] == timesforge.slack.view.IMPORT_CALLBACK
+    assert view['blocks'][0]['text']['text'] == '<#CXXX1> (<@UXXX1>)'
+    assert [option['value'] for option in view['blocks'][1]['element']['options']] == ['CXXX1']
+    assert [block['text']['text'] for block in empty['blocks']] == ['No times channel was imported.']
+
+def test_view_history_modal() -> None:
+
+    view = timesforge.slack.view.trace(entries = ENTRIES_TRACED, language = 'en')
+    empty = timesforge.slack.view.trace(entries = [], language = 'en')
+
+    assert [block['text']['text'] for block in view['blocks']] == ['<!date^1793199600^{date_short} {time}|2026-10-28 15:00 UTC> <#CXXX1> was renamed to #xxx.', '<!date^1793199600^{date_short} {time}|2026-10-28 15:00 UTC> <@UXXX1> excluded <@UXXX2> from creating times channels.']
+    assert [block['text']['text'] for block in empty['blocks']] == ['Nothing has changed yet.']
 
 @pytest.mark.parametrize(('role', 'texts'), ROLES_MESSAGE)
 def test_view_home_role(

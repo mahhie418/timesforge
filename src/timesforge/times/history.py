@@ -8,7 +8,7 @@ import typing
 
 import timesforge.storage
 
-type Action = typing.Literal['create', 'import', 'rename', 'archive', 'unarchive', 'delete', 'include', 'exclude', 'grant', 'revoke', 'resolve']
+type Action = typing.Literal['create', 'import', 'rename', 'archive', 'unarchive', 'delete', 'include', 'exclude', 'grant', 'revoke', 'resolve', 'reassign']
 
 _ENTRY_INSERT = 'INSERT INTO history (workspace_id, actor_id, target_id, channel_id, history_action, detail_data, create_time) VALUES (?, ?, ?, ?, ?, ?, ?)'
 _ENTRY_SELECT = 'SELECT actor_id, target_id, channel_id, history_action, detail_data, create_time FROM history WHERE workspace_id = ? ORDER BY entry_id DESC LIMIT ?'
