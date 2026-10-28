@@ -35,6 +35,10 @@
   "home.channel.archived": "archived {date}",
   "home.channel.deleted": "deleted {date}",
   "home.channels": "Your times channels",
+  "home.conflict": "{user} asked for {channel}, which is taken.",
+  "home.conflict.action": "Choose name",
+  "home.conflicts": "Name conflicts",
+  "home.conflicts.none": "None",
   "home.creation": "Create times channel",
   "home.exclusions": "Excluded members",
   "home.exclusions.action": "Change exclusions",
@@ -68,5 +72,13 @@
   "recreation.member": "Member",
   "recreation.none": "None",
   "recreation.submit": "Apply",
-  "recreation.title": "Recreation grants"
+  "recreation.title": "Recreation grants",
+  "resolution.close": "Cancel",
+  "resolution.description": "{user} asked for {channel}, which is taken. Choose another name for their times channel; they still hold it.",
+  "resolution.error.settled": "The request no longer waits for a name.",
+  "resolution.error.taken": "This name is taken too.",
+  "resolution.hint": "Enter the part after #times_ in letters A to Z, with hyphens only between them.",
+  "resolution.name": "Name",
+  "resolution.submit": "Create",
+  "resolution.title": "Name conflict"
 }

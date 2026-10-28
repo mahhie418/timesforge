@@ -59,11 +59,14 @@ def register(
     background once it starts again, and a channel that it was creating then
     is looked for in Slack before it is created once more.
 
-    Only the owner excludes members from creating times channels and lets
-    them create one again, and gives and revokes recreation grants, as
-    `timesforge.slack.permission.restrict` makes sure. Excluding a member
-    withdraws their request that waits to be created or for the owner, and
-    the App Home of the member shows each change.
+    Only the owner chooses another name for a request whose name is taken,
+    excludes members from creating times channels and lets them create one
+    again, and gives and revokes recreation grants, as
+    `timesforge.slack.permission.restrict` makes sure. A request with the
+    name that the owner chose is created as an approved one is, for the
+    member who asked. Excluding a member withdraws their request that waits
+    to be created or for the owner, and the App Home of the member shows
+    each change.
 
     Args:
         application: The application.
@@ -112,7 +115,7 @@ def register(
         eligible, language = inspect(user)
         role = timesforge.slack.permission.role(settings, user)
 
-        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), exclusions = exclusions.find(team) if role == 'owner' else [], grants = recreations.scan(team) if role == 'owner' else [], role = role, language = language))
+        application.client.views_publish(user_id = user, view = timesforge.slack.view.home(refusal = refusal, eligible = eligible, request = history[-1] if history else None, channels = registry.find(team, user), exclusions = exclusions.find(team) if role == 'owner' else [], grants = recreations.scan(team) if role == 'owner' else [], conflicts = requests.scan(team, ['pending_name_resolution']) if role == 'owner' else [], role = role, language = language))
 
     def show(
         modal: str,
@@ -247,6 +250,59 @@ def register(
 
         if request.status == 'reserved': detach(lambda: create(team, user, request.request_id, view['id'], language))
 
+    def consider(
+        ack: slack_bolt.Ack,
+        body: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        ack()
+
+        if context.team_id is None or context.user_id is None: return
+
+        request = requests.load(context.team_id, int(body['actions'][0]['value']))
+
+        if request is None or request.status != 'pending_name_resolution': refresh(context.team_id, context.user_id); return
+
+        application.client.views_open(trigger_id = body['trigger_id'], view = timesforge.slack.view.resolve(request = request, language = choose(context.user_id)))
+
+    def resolve(
+        ack: slack_bolt.Ack,
+        view: dict[str, typing.Any],
+        context: slack_bolt.BoltContext
+    ) -> None:
+
+        team, owner = context.team_id, context.user_id
+
+        if team is None or owner is None: return
+
+        name = view['state']['values'][timesforge.slack.view.NAME_INPUT][timesforge.slack.view.NAME_INPUT]['value']
+        language = choose(owner)
+
+        try:
+
+            request = requests.resolve(team, int(view['private_metadata']), name, owner_id = owner, now = datetime.datetime.now(datetime.UTC))
+
+        except timesforge.times.naming.NameInvalidError as error:
+
+            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(f'creation.error.{error.reason}', language)})
+
+            return
+
+        except timesforge.times.request.NameTakenError:
+
+            ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate('resolution.error.taken', language)})
+
+            return
+
+        if request is None: ack(response_action = 'errors', errors = {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate('resolution.error.settled', language)}); return
+
+        member, request_id = request.user_id, request.request_id
+
+        ack(response_action = 'update', view = timesforge.slack.view.approve(request = request, language = language))
+        refresh(team, owner)
+        detach(lambda: create(team, member, request_id, view['id'], language))
+
     def manage(
         ack: slack_bolt.Ack,
         body: dict[str, typing.Any],
@@ -338,6 +394,8 @@ def register(
     application.event('channel_unarchive')(follow)
     application.action(timesforge.slack.view.CREATION_ACTION)(ask)
     application.view(timesforge.slack.view.CREATION_CALLBACK)(reserve)
+    application.action(timesforge.slack.view.RESOLUTION_ACTION, middleware = guard)(consider)
+    application.view(timesforge.slack.view.RESOLUTION_CALLBACK, middleware = guard)(resolve)
     application.action(timesforge.slack.view.EXCLUSION_ACTION, middleware = guard)(manage)
     application.view(timesforge.slack.view.EXCLUSION_CALLBACK, middleware = guard)(exclude)
     application.action(timesforge.slack.view.RECREATION_ACTION, middleware = guard)(offer)

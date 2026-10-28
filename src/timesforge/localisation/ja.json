@@ -35,6 +35,10 @@
   "home.channel.archived": "{date} にアーカイブ",
   "home.channel.deleted": "{date} に削除",
   "home.channels": "あなたの times チャンネル",
+  "home.conflict": "{user} が申請した {channel} は、すでに使われています。",
+  "home.conflict.action": "名前を決める",
+  "home.conflicts": "名前の重複",
+  "home.conflicts.none": "なし",
   "home.creation": "times チャンネルを作成",
   "home.exclusions": "作成対象外のメンバー",
   "home.exclusions.action": "除外を変更",
@@ -68,5 +72,13 @@
   "recreation.member": "メンバー",
   "recreation.none": "なし",
   "recreation.submit": "適用",
-  "recreation.title": "再作成権"
+  "recreation.title": "再作成権",
+  "resolution.close": "キャンセル",
+  "resolution.description": "{user} が申請した {channel} は、すでに使われています。代わりの名前を決めてください。保持者は申請したメンバーのままです。",
+  "resolution.error.settled": "この申請は、名前が決まるのを待っていません。",
+  "resolution.error.taken": "この名前も使われています。",
+  "resolution.hint": "#times_ に続く部分を、A〜Z の英字で入力してください。ハイフンは英字の間にだけ使えます。",
+  "resolution.name": "名前",
+  "resolution.submit": "作成",
+  "resolution.title": "名前の重複"
 }

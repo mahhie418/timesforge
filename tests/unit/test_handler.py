@@ -48,6 +48,8 @@ EXCLUSIONS_REFUSED = [
     ('UXXX3', 'include', '', timesforge.slack.view.MEMBER_INPUT, 'exclusion.error.include')
 ]
 
+RESOLUTIONS_REFUSED = [('Xxx', 'resolution.error.taken'), ('漢字', 'creation.error.characters')]
+
 GRANTS_REFUSED = [
     ('UXXX1', 'grant', 'recreation.error.holder'),
     ('UXXX2', 'grant', 'recreation.error.grant'),
@@ -118,10 +120,16 @@ def change(
 def press(
     application: slack_bolt.App,
     user: str,
-    action: str
+    action: str,
+    *,
+    value: str | None = None
 ) -> slack_bolt.BoltResponse:
 
-    return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'block_actions', 'team': {'id': 'TXXX'}, 'user': {'id': user}, 'trigger_id': 'xxx', 'actions': [{'type': 'button', 'action_id': action}]}, mode = 'socket_mode'))
+    button = {'type': 'button', 'action_id': action}
+
+    if value is not None: button['value'] = value
+
+    return application.dispatch(slack_bolt.BoltRequest(body = {'type': 'block_actions', 'team': {'id': 'TXXX'}, 'user': {'id': user}, 'trigger_id': 'xxx', 'actions': [button]}, mode = 'socket_mode'))
 
 def submit(
     application: slack_bolt.App,
@@ -136,6 +144,13 @@ def named(
 ) -> dict[str, typing.Any]:
 
     return {'callback_id': timesforge.slack.view.CREATION_CALLBACK, 'state': {'values': {timesforge.slack.view.NAME_INPUT: {timesforge.slack.view.NAME_INPUT: {'type': 'plain_text_input', 'value': first_name}}}}}
+
+def resolved(
+    request_id: int,
+    name: str
+) -> dict[str, typing.Any]:
+
+    return {'callback_id': timesforge.slack.view.RESOLUTION_CALLBACK, 'private_metadata': str(request_id), 'state': {'values': {timesforge.slack.view.NAME_INPUT: {timesforge.slack.view.NAME_INPUT: {'type': 'plain_text_input', 'value': name}}}}}
 
 def excluded(
     user: str,
@@ -173,7 +188,7 @@ def test_handler_home_publication(
     timesforge.times.registry.RegistryIO(database).save('TXXX', channel)
 
     assert home(application, user, 'home').status == 200
-    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = [channel], exclusions = [], grants = [], role = role, language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = [channel], exclusions = [], grants = [], conflicts = [], role = role, language = 'ja')}]
 
 def test_handler_home_locale(
     application: slack_bolt.App,
@@ -184,7 +199,7 @@ def test_handler_home_locale(
 
     assert home(application, 'UXXX1', 'home').status == 200
     assert calls(workspace, 'users.info') == [{'user': 'UXXX1', 'include_locale': True}]
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], grants = [], role = 'owner', language = 'en')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], grants = [], conflicts = [], role = 'owner', language = 'en')}]
 
 @pytest.mark.parametrize(('tab', 'count'), TABS_OPENED)
 def test_handler_home_tab(
@@ -196,7 +211,7 @@ def test_handler_home_tab(
 
     home(application, 'UXXX1', tab)
 
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], grants = [], role = 'owner', language = 'ja')}] * count
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX1', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = [], grants = [], conflicts = [], role = 'owner', language = 'ja')}] * count
 
 @pytest.mark.parametrize(('event', 'holder', 'states', 'views'), EVENTS_CHANNEL)
 def test_handler_channel_change(
@@ -211,7 +226,7 @@ def test_handler_channel_change(
 
     assert change(application, event).status == 200
     assert [(channel.status, channel.channel_name) for channel in registry.find('TXXX', holder)] == states
-    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = refusal, eligible = True, request = None, channels = registry.find('TXXX', user), exclusions = [], grants = [], role = 'member', language = 'ja')} for user, refusal in views]
+    assert calls(workspace, 'views.publish') == [{'user_id': user, 'view': timesforge.slack.view.home(refusal = refusal, eligible = True, request = None, channels = registry.find('TXXX', user), exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')} for user, refusal in views]
 
 def test_handler_channel_recovery(
     workspace: dict[str, typing.Any],
@@ -222,7 +237,7 @@ def test_handler_channel_recovery(
     recover('TXXX', CREATION)
 
     assert [channel.status for holder in ('UXXX1', 'UXXX2', 'UXXX3') for channel in registry.find('TXXX', holder)] == ['active', 'archived', 'deleted']
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = registry.find('TXXX', 'UXXX2'), exclusions = [], grants = [], role = 'member', language = 'ja')}, {'user_id': 'UXXX3', 'view': timesforge.slack.view.home(refusal = 'used', eligible = True, request = None, channels = registry.find('TXXX', 'UXXX3'), exclusions = [], grants = [], role = 'member', language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = None, channels = registry.find('TXXX', 'UXXX2'), exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}, {'user_id': 'UXXX3', 'view': timesforge.slack.view.home(refusal = 'used', eligible = True, request = None, channels = registry.find('TXXX', 'UXXX3'), exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}]
 
 @pytest.mark.usefixtures('registry')
 def test_handler_recovery_failure(
@@ -277,7 +292,7 @@ def test_handler_channel_creation(
     assert [(request.first_name, request.channel_name, request.status, request.channel_id) for request in requests] == [('Yyy', 'times_yyy', 'completed', 'CXXX3')]
     assert workspace['members']['CXXX3'] == ['UXXX0', 'UXXXB', 'UXXX1', 'UXXX2', 'UXXX3', 'UXXX4']
     assert calls(workspace, 'views.update') == [{'view_id': 'VXXX', 'view': timesforge.slack.view.report(request = requests[0], language = 'ja')}]
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = reservation, channels = [], exclusions = [], grants = [], role = 'member', language = 'ja')}, {'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = requests[0], channels = timesforge.times.registry.RegistryIO(database).find('TXXX', 'UXXX2'), exclusions = [], grants = [], role = 'member', language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = reservation, channels = [], exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}, {'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = 'holder', eligible = True, request = requests[0], channels = timesforge.times.registry.RegistryIO(database).find('TXXX', 'UXXX2'), exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}]
 
 def test_handler_creation_failure(
     application: slack_bolt.App,
@@ -292,7 +307,7 @@ def test_handler_creation_failure(
 
     assert [(request.status, request.error) for request in requests] == [('failed', 'restricted_action')]
     assert calls(workspace, 'views.update') == [{'view_id': 'VXXX', 'view': timesforge.slack.view.report(request = requests[0], language = 'ja')}]
-    assert calls(workspace, 'views.publish')[-1] == {'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = requests[0], channels = [], exclusions = [], grants = [], role = 'member', language = 'ja')}
+    assert calls(workspace, 'views.publish')[-1] == {'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = requests[0], channels = [], exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}
 
 def test_handler_modal_closure(
     monkeypatch: pytest.MonkeyPatch,
@@ -353,7 +368,7 @@ def test_handler_creation_pending(
 
     assert [request.status for request in requests] == ['pending_name_resolution']
     assert json.loads(response.body) == {'response_action': 'update', 'view': timesforge.slack.view.approve(request = requests[0], language = 'ja')}
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = requests[0], channels = [], exclusions = [], grants = [], role = 'member', language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX2', 'view': timesforge.slack.view.home(refusal = None, eligible = True, request = requests[0], channels = [], exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}]
 
 def test_handler_guest_refusal(
     application: slack_bolt.App,
@@ -366,7 +381,62 @@ def test_handler_guest_refusal(
     assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate('creation.refusal.ineligible', 'ja')}}
     assert timesforge.times.request.RequestIO(database).find('TXXX', 'UXXX5') == []
     assert home(application, 'UXXX5', 'home').status == 200
-    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX5', 'view': timesforge.slack.view.home(refusal = None, eligible = False, request = None, channels = [], exclusions = [], grants = [], role = 'member', language = 'ja')}]
+    assert calls(workspace, 'views.publish') == [{'user_id': 'UXXX5', 'view': timesforge.slack.view.home(refusal = None, eligible = False, request = None, channels = [], exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')}]
+
+def test_handler_conflict_resolution(
+    application: slack_bolt.App,
+    workspace: dict[str, typing.Any],
+    database: timesforge.storage.Database
+) -> None:
+
+    registry = timesforge.times.registry.RegistryIO(database)
+    channel = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', creation = CREATION)
+
+    registry.save('TXXX', channel)
+
+    requests = timesforge.times.request.RequestIO(database)
+    request = requests.reserve('TXXX', 'UXXX2', 'Xxx', CREATION)
+
+    assert press(application, 'UXXX2', timesforge.slack.view.RESOLUTION_ACTION, value = str(request.request_id)).status == 200
+    assert calls(workspace, 'views.open') == []
+    assert press(application, 'UXXX1', timesforge.slack.view.RESOLUTION_ACTION, value = str(request.request_id)).status == 200
+    assert calls(workspace, 'views.open') == [{'trigger_id': 'xxx', 'view': timesforge.slack.view.resolve(request = request, language = 'ja')}]
+
+    response = submit(application, 'UXXX1', resolved(request.request_id, 'Xxx-Yyy'))
+    result = requests.load('TXXX', request.request_id)
+
+    assert result is not None
+    assert (result.user_id, result.channel_name, result.status, result.channel_id) == ('UXXX2', 'times_xxx-yyy', 'completed', 'CXXX3')
+    assert json.loads(response.body) == {'response_action': 'update', 'view': timesforge.slack.view.approve(request = dataclasses.replace(result, status = 'reserved', channel_id = None), language = 'ja')}
+    assert calls(workspace, 'views.update') == [{'view_id': 'VXXX', 'view': timesforge.slack.view.report(request = result, language = 'ja')}]
+    assert [(item.channel_id, item.channel_name) for item in registry.find('TXXX', 'UXXX2')] == [('CXXX3', 'times_xxx-yyy')]
+    assert [arguments['user_id'] for arguments in calls(workspace, 'views.publish')] == ['UXXX1', 'UXXX2']
+
+    response = submit(application, 'UXXX1', resolved(request.request_id, 'Zzz'))
+
+    assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate('resolution.error.settled', 'ja')}}
+    assert press(application, 'UXXX1', timesforge.slack.view.RESOLUTION_ACTION, value = str(request.request_id)).status == 200
+    assert len(calls(workspace, 'views.open')) == 1
+
+@pytest.mark.parametrize(('name', 'key'), RESOLUTIONS_REFUSED)
+def test_handler_resolution_refusal(
+    application: slack_bolt.App,
+    database: timesforge.storage.Database,
+    name: str,
+    key: str
+) -> None:
+
+    channel = timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', creation = CREATION)
+
+    timesforge.times.registry.RegistryIO(database).save('TXXX', channel)
+
+    requests = timesforge.times.request.RequestIO(database)
+    request = requests.reserve('TXXX', 'UXXX2', 'Xxx', CREATION)
+
+    response = submit(application, 'UXXX1', resolved(request.request_id, name))
+
+    assert json.loads(response.body) == {'response_action': 'errors', 'errors': {timesforge.slack.view.NAME_INPUT: timesforge.localisation.translate(key, 'ja')}}
+    assert requests.load('TXXX', request.request_id) == request
 
 def test_handler_exclusion_modal(
     application: slack_bolt.App,
@@ -403,7 +473,7 @@ def test_handler_member_exclusion(
     assert (exclusion.reason, exclusion.owner_id) == ('xxx', 'UXXX1')
     assert [(request.status, request.error) for request in requests.find('TXXX', 'UXXX2')] == [('failed', 'excluded')]
     assert [arguments['user_id'] for arguments in calls(workspace, 'views.publish')] == ['UXXX1', 'UXXX2']
-    assert calls(workspace, 'views.publish')[1]['view'] == timesforge.slack.view.home(refusal = 'excluded', eligible = True, request = requests.find('TXXX', 'UXXX2')[0], channels = [], exclusions = [], grants = [], role = 'member', language = 'ja')
+    assert calls(workspace, 'views.publish')[1]['view'] == timesforge.slack.view.home(refusal = 'excluded', eligible = True, request = requests.find('TXXX', 'UXXX2')[0], channels = [], exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')
 
     submit(application, 'UXXX1', excluded('UXXX2', 'include', None))
 
@@ -460,7 +530,7 @@ def test_handler_recreation_grant(
     assert (response.status, response.body) == (200, '')
     assert [(grant.user_id, grant.status, grant.owner_id) for grant in grants] == [('UXXX2', 'unused', 'UXXX1')]
     assert [arguments['user_id'] for arguments in calls(workspace, 'views.publish')] == ['UXXX1', 'UXXX2']
-    assert calls(workspace, 'views.publish')[1]['view'] == timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = registry.find('TXXX', 'UXXX2'), exclusions = [], grants = [], role = 'member', language = 'ja')
+    assert calls(workspace, 'views.publish')[1]['view'] == timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = registry.find('TXXX', 'UXXX2'), exclusions = [], grants = [], conflicts = [], role = 'member', language = 'ja')
 
     submit(application, 'UXXX1', granted('UXXX2', 'revoke'))
 

@@ -5,6 +5,7 @@ import pytest
 
 import timesforge.storage
 import timesforge.times.exclusion
+import timesforge.times.history
 import timesforge.times.naming
 import timesforge.times.recreation
 import timesforge.times.registry
@@ -181,6 +182,22 @@ def test_request_name_invalid(
     with pytest.raises(timesforge.times.naming.NameInvalidError): timesforge.times.request.RequestIO(database).reserve('TXXX', 'UXXX1', 'xxx yyy', CREATION)
 
     assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 0
+
+def test_request_name_resolution(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1')
+
+    store = timesforge.times.request.RequestIO(database)
+    request = store.reserve('TXXX', 'UXXX2', 'Xxx', CREATION)
+
+    with pytest.raises(timesforge.times.request.NameTakenError): store.resolve('TXXX', request.request_id, ' Xxx ', owner_id = 'UXXX0', now = CHANGE)
+    with pytest.raises(timesforge.times.naming.NameInvalidError): store.resolve('TXXX', request.request_id, 'xxx yyy', owner_id = 'UXXX0', now = CHANGE)
+
+    assert store.resolve('TXXX', request.request_id, 'Xxx-Yyy', owner_id = 'UXXX0', now = CHANGE) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX2', first_name = 'Xxx', channel_name = 'times_xxx-yyy', status = 'reserved', grant_id = None, creation = CREATION)
+    assert store.resolve('TXXX', request.request_id, 'Zzz', owner_id = 'UXXX0', now = CHANGE) is None
+    assert timesforge.times.history.HistoryIO(database).load('TXXX', 1) == [timesforge.times.history.Entry(action = 'resolve', actor_id = 'UXXX0', target_id = 'UXXX2', details = {'channel_name': 'times_xxx-yyy'}, creation = CHANGE)]
 
 def test_request_member_withdrawal(
     database: timesforge.storage.Database

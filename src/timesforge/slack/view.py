@@ -19,6 +19,8 @@ EXCLUSION_ACTION = 'exclusion_action'
 EXCLUSION_CALLBACK = 'exclusion_callback'
 RECREATION_ACTION = 'recreation_action'
 RECREATION_CALLBACK = 'recreation_callback'
+RESOLUTION_ACTION = 'resolution_action'
+RESOLUTION_CALLBACK = 'resolution_callback'
 
 NAME_INPUT = 'name_input'
 MEMBER_INPUT = 'member_input'
@@ -33,6 +35,7 @@ def home(
     channels: list[timesforge.times.registry.Channel],
     exclusions: list[timesforge.times.exclusion.Exclusion],
     grants: list[timesforge.times.recreation.Grant],
+    conflicts: list[timesforge.times.request.Request],
     role: timesforge.slack.permission.Role,
     language: timesforge.configuration.Language
 ) -> dict[str, typing.Any]:
@@ -46,9 +49,11 @@ def home(
     to the button. Below, the times channels that the viewer holds or held
     are listed with the day when each was created, archived or deleted, and
     each that is not deleted links to the channel. The owner also sees their
-    own role and, under a heading, the members excluded from creating times
-    channels and those with recreation grants that are not used up, each
-    with a button that changes them.
+    own role and, under a heading, the requests that wait for them because
+    their names are taken, each with a button that chooses another name, and
+    the members excluded from creating times channels and those with
+    recreation grants that are not used up, each with a button that changes
+    them.
 
     Args:
         refusal: Why the viewer may not create a times channel, or None when the rules let them.
@@ -57,6 +62,7 @@ def home(
         channels: Times channels that the viewer holds or held, oldest first.
         exclusions: Members excluded from creating times channels, which only the owner sees.
         grants: Recreation grants that are not used up, which only the owner sees.
+        conflicts: Requests that wait for the owner because their names are taken, which only the owner sees.
         role: Role of the viewer.
         language: Language of the viewer.
 
@@ -85,6 +91,11 @@ def home(
     if role == 'owner':
 
         blocks.extend([{'type': 'divider'}, _heading(timesforge.localisation.translate('home.heading.owner', language))])
+
+        if not conflicts: blocks.append(_item(timesforge.localisation.translate('home.conflicts', language), timesforge.localisation.translate('home.conflicts.none', language), None))
+
+        blocks.extend(_item(timesforge.localisation.translate('home.conflicts', language), timesforge.localisation.translate('home.conflict', language, user = f'<@{conflict.user_id}>', channel = f'#{conflict.channel_name}'), _action(RESOLUTION_ACTION, timesforge.localisation.translate('home.conflict.action', language), value = str(conflict.request_id))) for conflict in conflicts)
+
         blocks.append(_item(timesforge.localisation.translate('home.exclusions', language), ', '.join(f'<@{exclusion.user_id}>' for exclusion in exclusions) or timesforge.localisation.translate('home.exclusions.none', language), _action(EXCLUSION_ACTION, timesforge.localisation.translate('home.exclusions.action', language))))
         blocks.append(_item(timesforge.localisation.translate('home.recreations', language), ', '.join(f'<@{grant.user_id}>' for grant in grants) or timesforge.localisation.translate('home.recreations.none', language), _action(RECREATION_ACTION, timesforge.localisation.translate('home.recreations.action', language))))
 
@@ -219,6 +230,29 @@ def grant(
 
     return {'type': 'modal', 'callback_id': RECREATION_CALLBACK, 'title': _plain(timesforge.localisation.translate('recreation.title', language)), 'submit': _plain(timesforge.localisation.translate('recreation.submit', language)), 'close': _plain(timesforge.localisation.translate('recreation.close', language)), 'blocks': blocks}
 
+def resolve(
+    *,
+    request: timesforge.times.request.Request,
+    language: timesforge.configuration.Language
+) -> dict[str, typing.Any]:
+
+    """Builds the modal in which the owner chooses another name for a request whose name is taken.
+
+    The request travels with the view, so that submitting it names that request.
+
+    Args:
+        request: The request, which waits for the owner.
+        language: Language of the owner.
+
+    Returns:
+        The view, as views.open takes it.
+    """
+
+    element = {'type': 'plain_text_input', 'action_id': NAME_INPUT, 'max_length': timesforge.times.naming.NAME_LENGTH_MAXIMUM - len(timesforge.times.naming.PREFIX)}
+    blocks = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': timesforge.localisation.translate('resolution.description', language, user = f'<@{request.user_id}>', channel = f'#{request.channel_name}')}}, {'type': 'input', 'block_id': NAME_INPUT, 'label': _plain(timesforge.localisation.translate('resolution.name', language)), 'hint': _plain(timesforge.localisation.translate('resolution.hint', language)), 'element': element}]
+
+    return {'type': 'modal', 'callback_id': RESOLUTION_CALLBACK, 'private_metadata': str(request.request_id), 'title': _plain(timesforge.localisation.translate('resolution.title', language)), 'submit': _plain(timesforge.localisation.translate('resolution.submit', language)), 'close': _plain(timesforge.localisation.translate('resolution.close', language)), 'blocks': blocks}
+
 def _describe(
     channel: timesforge.times.registry.Channel,
     language: timesforge.configuration.Language
@@ -254,12 +288,14 @@ def _action(
     action: str,
     text: str,
     *,
-    style: str | None = None
+    style: str | None = None,
+    value: str | None = None
 ) -> dict[str, typing.Any]:
 
     button = {'type': 'button', 'action_id': action, 'text': _plain(text)}
 
     if style is not None: button['style'] = style
+    if value is not None: button['value'] = value
 
     return button
 
