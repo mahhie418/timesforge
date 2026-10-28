@@ -16,6 +16,7 @@ import timesforge.product
 import timesforge.slack.api
 import timesforge.slack.application
 import timesforge.slack.existing
+import timesforge.slack.invitation
 import timesforge.storage
 import timesforge.times.registry
 
@@ -58,6 +59,8 @@ def _build() -> argparse.ArgumentParser:
     start.set_defaults(handler = _start)
     manifest = commands.add_parser('manifest', help = 'print the manifest for creating the Slack app')
     manifest.set_defaults(handler = _manifest)
+    doctor = commands.add_parser('doctor', help = 'check the settings, the Slack tokens, the database, the owner and the welcome channel')
+    doctor.set_defaults(handler = _doctor)
 
     return parser
 
@@ -125,5 +128,54 @@ def _manifest(
 ) -> int:
 
     print(importlib.resources.files('timesforge.slack').joinpath('manifest.json').read_text(encoding = 'utf-8'), end = '')
+
+    return 0
+
+def _doctor(
+    _: argparse.Namespace
+) -> int:
+
+    try:
+
+        settings = timesforge.configuration.load()
+        settings.require('slack_bot_token', 'slack_app_token', 'timesforge_owner_id', 'timesforge_channel_id_welcome')
+
+        print('ok: settings')
+
+        client = timesforge.slack.api.connect(settings.slack_bot_token)
+
+        print(f"ok: Slack: {client.auth_test().get('url', '')}")
+
+        client.apps_connections_open(app_token = settings.slack_app_token)
+
+        print('ok: app-level token')
+
+        if settings.slack_user_token:
+
+            admin = timesforge.slack.api.connect(settings.slack_user_token).auth_test().get('user_id', '')
+
+            if not client.users_info(user = admin).get('user', {}).get('is_admin'): raise timesforge.configuration.ConfigurationError('SLACK_USER_TOKEN must belong to an admin of the workspace')
+
+            print(f'ok: user token: {admin}')
+
+        timesforge.storage.Database(pathlib.Path(os.path.join(settings.timesforge_data_directory, timesforge.storage.DATABASE_FILE))).close()
+
+        print('ok: database')
+
+        if not timesforge.slack.invitation.eligible(client.users_info(user = settings.timesforge_owner_id).get('user', {})): raise timesforge.configuration.ConfigurationError('TIMESFORGE_OWNER_ID must be a member of the workspace')
+
+        print(f'ok: owner: {settings.timesforge_owner_id}')
+
+        channel = client.conversations_info(channel = settings.timesforge_channel_id_welcome).get('channel', {})
+
+        if not channel.get('is_member'): raise timesforge.configuration.ConfigurationError(f"The bot must be in #{channel.get('name', '')} to welcome new members")
+
+    except (timesforge.configuration.ConfigurationError, timesforge.storage.DatabaseError, slack_sdk.errors.SlackApiError) as error:
+
+        print(f'error: {error}', file = sys.stderr)
+
+        return 1
+
+    print(f"ok: welcome channel: #{channel.get('name', '')}")
 
     return 0

@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import pathlib
+import typing
 import unittest.mock
 
 import pytest
@@ -21,6 +22,17 @@ ENVIRONMENTS_START = [
     ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxp-xxx', False), ('xoxb-xxx', False)]),
     ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': '', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxb-xxx', False), ('xoxb-xxx', False)]),
     ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': '', 'TIMESFORGE_CHANNEL_ID_WELCOME': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID, TIMESFORGE_CHANNEL_ID_WELCOME\n', [], [])
+]
+
+ENVIRONMENT_DOCTOR = {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}
+
+CHECKS_DOCTOR = [
+    ({}, 'UXXX2', 0, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
+    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
+    ({'SLACK_APP_TOKEN': ''}, 'UXXX2', 1, '', 'error: Missing required environment variables: SLACK_APP_TOKEN\n'),
+    ({}, 'UXXX1', 1, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\n', 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'),
+    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\n', 'error: TIMESFORGE_OWNER_ID must be a member of the workspace\n'),
+    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\n', 'error: The bot must be in #xxx to welcome new members\n')
 ]
 
 def prepare(
@@ -254,3 +266,39 @@ class TestTerminalCommandManifest:
         assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened', 'channel_archive', 'channel_deleted', 'channel_rename', 'channel_unarchive', 'member_joined_channel']
         assert manifest['settings']['interactivity']['is_enabled']
         assert manifest['settings']['socket_mode_enabled']
+
+class TestTerminalCommandDoctor:
+
+    @pytest.mark.parametrize(('environment', 'identity', 'status', 'out', 'err'), CHECKS_DOCTOR)
+    def test_check(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient,
+        writer: slack_sdk.web.WebClient,
+        environment: dict[str, str],
+        identity: str,
+        status: int,
+        out: str,
+        err: str
+    ) -> None:
+
+        def connect(
+            token: str
+        ) -> slack_sdk.web.WebClient:
+
+            return writer if token.startswith('xoxp-') else slack
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(writer, 'auth_test', unittest.mock.Mock(return_value = {'user_id': identity}))
+
+        for name, value in (ENVIRONMENT_DOCTOR | environment).items(): monkeypatch.setenv(name, value)
+
+        assert timesforge.terminal.main(['doctor']) == status
+        assert capsys.readouterr() == (out, err)

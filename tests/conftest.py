@@ -39,7 +39,8 @@ class Slack(slack_sdk.web.WebClient):
 
         match api_method:
 
-            case 'auth.test': data = {'ok': True, 'team': 'xxx', 'team_id': 'TXXX', 'user_id': self.identity}
+            case 'auth.test': data = {'ok': True, 'url': 'https://xxx.slack.com/', 'team': 'xxx', 'team_id': 'TXXX', 'user_id': self.identity}
+            case 'apps.connections.open': data = {'ok': True, 'url': 'wss://xxx'}
             case 'users.list': data = {'ok': True, **page('members', self.workspace['users'], arguments)}
             case 'users.info': data = next(({'ok': True, 'user': user} for user in self.workspace['users'] if user['id'] == arguments['user']), {'ok': False, 'error': 'user_not_found'})
             case 'conversations.info': data = next(({'ok': True, 'channel': channel} for channel in self.workspace['channels'] if channel['id'] == arguments['channel']), {'ok': False, 'error': 'channel_not_found'})
