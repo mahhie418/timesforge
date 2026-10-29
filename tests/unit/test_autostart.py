@@ -119,7 +119,7 @@ def test_autostart_agent_removal(
     monkeypatch.setattr(pathlib.Path, 'home', lambda: tmp_path)
     monkeypatch.setattr(subprocess, 'run', run)
 
-    assert timesforge.autostart.unregister() == str(agent)
+    assert timesforge.autostart.unregister(pathlib.Path(os.path.join(tmp_path, 'xxx.log'))) == str(agent)
     assert not agent.exists()
     assert [call.args[0] for call in run.call_args_list] == [['/bin/launchctl', 'bootout', 'gui/501/timesforge']]
 
@@ -135,8 +135,56 @@ def test_autostart_agent_absence(
     monkeypatch.setattr(pathlib.Path, 'home', lambda: tmp_path)
     monkeypatch.setattr(subprocess, 'run', run)
 
-    assert timesforge.autostart.unregister() is None
+    assert timesforge.autostart.unregister(pathlib.Path(os.path.join(tmp_path, 'xxx.log'))) is None
     assert [call.args[0] for call in run.call_args_list] == [['/bin/launchctl', 'bootout', 'gui/501/timesforge']]
+
+def test_autostart_task_removal(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    task = pathlib.Path(os.path.join(tmp_path, 'timesforge.xml'))
+    task.write_text('xxx', encoding = 'utf-16')
+    run = unittest.mock.Mock(return_value = subprocess.CompletedProcess('xxx', 0))
+
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setenv('SYSTEMROOT', 'xxx')
+    monkeypatch.setattr(subprocess, 'run', run)
+
+    assert timesforge.autostart.unregister(pathlib.Path(os.path.join(tmp_path, 'xxx.log'))) == str(task)
+    assert not task.exists()
+
+    command = os.path.join('xxx', 'System32', 'schtasks.exe')
+
+    assert [call.args[0] for call in run.call_args_list] == [[command, '/Query', '/TN', 'timesforge'], [command, '/End', '/TN', 'timesforge'], [command, '/Delete', '/TN', 'timesforge', '/F']]
+
+def test_autostart_task_absence(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    run = unittest.mock.Mock(return_value = subprocess.CompletedProcess('xxx', 1))
+
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(subprocess, 'run', run)
+
+    assert timesforge.autostart.unregister(pathlib.Path(os.path.join(tmp_path, 'xxx.log'))) is None
+    assert [call.args[0][1:] for call in run.call_args_list] == [['/Query', '/TN', 'timesforge']]
+
+def test_autostart_deletion_refusal(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    task = pathlib.Path(os.path.join(tmp_path, 'timesforge.xml'))
+    task.write_text('xxx', encoding = 'utf-16')
+
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(subprocess, 'run', unittest.mock.Mock(side_effect = [subprocess.CompletedProcess('xxx', 0), subprocess.CompletedProcess('xxx', 0), subprocess.CalledProcessError(1, 'xxx', stderr = 'xxx\n')]))
+
+    with pytest.raises(timesforge.autostart.AutostartError, match = 'refused to delete timesforge: xxx'): timesforge.autostart.unregister(pathlib.Path(os.path.join(tmp_path, 'xxx.log')))
+
+    assert task.exists()
 
 def test_autostart_platform_support() -> None:
 
@@ -152,9 +200,10 @@ def test_autostart_platform_rejection(
     with pytest.raises(timesforge.autostart.AutostartError, match = r'not supported on xxx$'): timesforge.autostart.register(pathlib.Path(os.path.join(tmp_path, 'xxx.log')))
 
 def test_autostart_removal_rejection(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
     monkeypatch.setattr(sys, 'platform', 'xxx')
 
-    with pytest.raises(timesforge.autostart.AutostartError, match = r'not supported on xxx$'): timesforge.autostart.unregister()
+    with pytest.raises(timesforge.autostart.AutostartError, match = r'not supported on xxx$'): timesforge.autostart.unregister(pathlib.Path(os.path.join(tmp_path, 'xxx.log')))

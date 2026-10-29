@@ -156,9 +156,9 @@ def _stop(
 
     try:
 
-        registration = timesforge.autostart.unregister()
+        registration = timesforge.autostart.unregister(pathlib.Path(os.path.join(timesforge.configuration.load().timesforge_data_directory, 'start.log')))
 
-    except timesforge.autostart.AutostartError as error:
+    except (timesforge.configuration.ConfigurationError, timesforge.autostart.AutostartError) as error:
 
         _report('ERROR', str(error))
 
