@@ -1,3 +1,4 @@
+import builtins
 import collections.abc
 import datetime
 import getpass
@@ -33,12 +34,12 @@ ENVIRONMENTS_START = [
 ENVIRONMENT_DOCTOR = {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}
 
 CHECKS_DOCTOR = [
-    ({}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
-    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
+    ({}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: xxx1\nok: welcome channel: #times_xxx\n', ''),
+    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx1\nok: welcome channel: #times_xxx\n', ''),
     ({'SLACK_APP_TOKEN': ''}, 'UXXX2', 1, '', 'error: Missing required environment variables: SLACK_APP_TOKEN\n'),
     ({}, 'UXXX1', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\n', 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'),
-    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\n', 'error: TIMESFORGE_OWNER_ID must be a member of the workspace\n'),
-    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\n', 'error: The bot must be in #xxx to welcome new members\n')
+    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\n', 'error: UXXX5 is not a member of the workspace\n'),
+    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: xxx1\n', 'error: The bot must be in #xxx to welcome new members\n')
 ]
 
 TOKENS_SETUP = [
@@ -48,6 +49,13 @@ TOKENS_SETUP = [
     (['', '', '', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, 'ok: Slack: https://xxx.slack.com/\n', 'error: Missing required environment variables: SLACK_BOT_TOKEN, SLACK_APP_TOKEN\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
     (['', '', ''], 'SLACK_BOT_TOKEN=xoxb-xxx\nSLACK_APP_TOKEN=xapp-xxx\n', 0, 'ok: Slack: https://xxx.slack.com/\n', '', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
     ([EOFError()], '', 1, '', '\nerror: Setup was stopped\n', {})
+]
+
+OWNERS_SETUP = [
+    (['UXXX2'], 'ok: owner: xxx2\n', '', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
+    (['xxx', 'UXXX2'], 'ok: owner: xxx2\n', 'error: TIMESFORGE_OWNER_ID must be one Slack user ID\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
+    (['UXXX5', 'UXXX2'], 'ok: owner: xxx2\n', 'error: UXXX5 is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
+    (['UXXXB', 'UXXX2'], 'ok: owner: xxx2\n', 'error: UXXXB is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'})
 ]
 
 def prepare(
@@ -83,12 +91,15 @@ def count(
 
 def answer(
     monkeypatch: pytest.MonkeyPatch,
-    tokens: list[str | Exception]
+    *,
+    tokens: collections.abc.Sequence[str | Exception] = ('xoxb-xxx', 'xapp-xxx', ''),
+    owners: collections.abc.Sequence[str | Exception] = ('UXXX2',)
 ) -> unittest.mock.Mock:
 
     browse = unittest.mock.Mock()
 
     monkeypatch.setattr(getpass, 'getpass', unittest.mock.Mock(side_effect = tokens))
+    monkeypatch.setattr(builtins, 'input', unittest.mock.Mock(side_effect = owners))
     monkeypatch.setattr(webbrowser, 'open', browse)
 
     return browse
@@ -358,7 +369,7 @@ class TestTerminalCommandSetup:
             configuration.write_text(saved, encoding = 'utf-8')
 
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
-        browse = answer(monkeypatch, tokens)
+        browse = answer(monkeypatch, tokens = tokens)
 
         assert timesforge.terminal.main(['setup']) == status
 
@@ -386,7 +397,7 @@ class TestTerminalCommandSetup:
 
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(slack, 'apps_connections_open', unittest.mock.Mock(side_effect = [slack_sdk.errors.SlackApiError('xxx', 'xxx'), {'url': 'wss://xxx'}]))
-        answer(monkeypatch, ['xoxb-xxx', 'xapp-xxx1', '', 'xoxb-xxx', 'xapp-xxx2', ''])
+        answer(monkeypatch, tokens = ['xoxb-xxx', 'xapp-xxx1', '', 'xoxb-xxx', 'xapp-xxx2', ''])
 
         assert timesforge.terminal.main(['setup']) == 0
         assert capsys.readouterr().err == 'error: xxx\nThe server responded with: xxx\n'
@@ -409,8 +420,58 @@ class TestTerminalCommandSetup:
 
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(writer, 'auth_test', unittest.mock.Mock(side_effect = [{'user_id': 'UXXX1'}, {'user_id': 'UXXX2'}]))
-        answer(monkeypatch, ['xoxb-xxx', 'xapp-xxx', 'xoxp-xxx1', 'xoxb-xxx', 'xapp-xxx', 'xoxp-xxx2'])
+        answer(monkeypatch, tokens = ['xoxb-xxx', 'xapp-xxx', 'xoxp-xxx1', 'xoxb-xxx', 'xapp-xxx', 'xoxp-xxx2'])
 
         assert timesforge.terminal.main(['setup']) == 0
         assert capsys.readouterr().err == 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'
         assert dotenv.dotenv_values(configuration)['SLACK_USER_TOKEN'] == 'xoxp-xxx2'
+
+    @pytest.mark.parametrize(('owners', 'out', 'err', 'written'), OWNERS_SETUP)
+    def test_owner(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        slack: slack_sdk.web.WebClient,
+        configuration: pathlib.Path,
+        owners: list[str],
+        out: str,
+        err: str,
+        written: dict[str, str]
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        answer(monkeypatch, owners = owners)
+
+        assert timesforge.terminal.main(['setup']) == 0
+
+        captured = capsys.readouterr()
+
+        assert out in captured.out
+        assert captured.err == err
+        assert {name: value for name, value in dotenv.dotenv_values(configuration).items() if name.startswith('TIMESFORGE_')} == written
+
+    def test_profile(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        slack: slack_sdk.web.WebClient
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(slack, 'users_info', unittest.mock.Mock(return_value = {'user': {'id': 'UXXX2', 'name': 'xxx1', 'profile': {'display_name': '漢字', 'real_name': 'xxx2'}}}))
+        answer(monkeypatch)
+
+        assert timesforge.terminal.main(['setup']) == 0
+        assert 'ok: owner: 漢字\n' in capsys.readouterr().out

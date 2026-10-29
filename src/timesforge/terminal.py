@@ -65,7 +65,7 @@ def _build() -> argparse.ArgumentParser:
     manifest.set_defaults(handler = _manifest)
     doctor = commands.add_parser('doctor', help = 'check the settings, the Slack tokens, the database, the owner and the welcome channel')
     doctor.set_defaults(handler = _doctor)
-    setup = commands.add_parser('setup', help = 'create the Slack app and write its tokens into the settings file')
+    setup = commands.add_parser('setup', help = 'create the Slack app and choose the owner, writing the settings file')
     setup.set_defaults(handler = _setup)
 
     return parser
@@ -162,9 +162,7 @@ def _doctor(
 
         print('ok: database')
 
-        if not timesforge.slack.invitation.eligible(client.users_info(user = settings.timesforge_owner_id).get('user', {})): raise timesforge.configuration.ConfigurationError('TIMESFORGE_OWNER_ID must be a member of the workspace')
-
-        print(f'ok: owner: {settings.timesforge_owner_id}')
+        print(f'ok: owner: {_name(client, settings.timesforge_owner_id)}')
 
         channel = client.conversations_info(channel = settings.timesforge_channel_id_welcome).get('channel', {})
 
@@ -186,9 +184,9 @@ def _setup(
 
     try:
 
-        _create()
+        _create(); _appoint()
 
-    except timesforge.configuration.ConfigurationError as error:
+    except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error:
 
         print(f'error: {error}', file = sys.stderr)
 
@@ -206,15 +204,17 @@ def _create() -> None:
 
     settings = timesforge.configuration.load()
     manifest = json.loads(importlib.resources.files('timesforge.slack').joinpath('manifest.json').read_text(encoding = 'utf-8'))
+
     url = f'https://api.slack.com/apps?new_app=1&manifest_json={urllib.parse.quote(json.dumps(manifest, separators = (',', ':')))}'
 
     print(f'Create the Slack app from its manifest: {url}')
     print('Choose the workspace, create the app and install it. Then copy the Bot User OAuth Token in OAuth & Permissions, and generate an App-Level Token with the connections:write scope in Basic Information. Where only admins may create public channels, an admin installs the app, and the User OAuth Token in OAuth & Permissions is copied too.', flush = True)
+
     webbrowser.open(url)
 
     while True:
 
-        bot, app, user = _ask('Bot User OAuth Token', settings.slack_bot_token), _ask('App-Level Token', settings.slack_app_token), _ask('User OAuth Token, or nothing where members may create public channels', settings.slack_user_token)
+        bot, app, user = _ask('Bot User OAuth Token', settings.slack_bot_token, secret = True), _ask('App-Level Token', settings.slack_app_token, secret = True), _ask('User OAuth Token, or nothing where members may create public channels', settings.slack_user_token, secret = True)
 
         try: identity = _identify(bot, app, user)
         except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
@@ -250,11 +250,47 @@ def _authorise(
 
     return admin
 
-def _ask(
-    question: str,
-    current: str
+def _appoint() -> None:
+
+    settings = timesforge.configuration.load()
+    client = timesforge.slack.api.connect(settings.slack_bot_token)
+
+    print('Copy the member ID of the owner in Slack: open the profile, choose the ⋮ button and Copy member ID.', flush = True)
+
+    while True:
+
+        owner = _ask('Member ID of the owner', settings.timesforge_owner_id, secret = False)
+
+        try: name = _name(client, owner)
+        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
+        else: break
+
+    timesforge.configuration.save({'TIMESFORGE_OWNER_ID': owner})
+
+    print(f'ok: owner: {name}')
+
+def _name(
+    client: slack_sdk.web.WebClient,
+    user: str
 ) -> str:
 
-    answer = getpass.getpass(f'{question}{' [keep current]' if current else ''}: ')
+    timesforge.configuration.load({'TIMESFORGE_OWNER_ID': user}).require('timesforge_owner_id')
+    entry = client.users_info(user = user).get('user', {})
+
+    if not timesforge.slack.invitation.eligible(entry): raise timesforge.configuration.ConfigurationError(f'{user} is not a member of the workspace')
+
+    profile = entry.get('profile', {})
+
+    return profile.get('display_name') or profile.get('real_name') or entry.get('name') or user
+
+def _ask(
+    question: str,
+    current: str,
+    *,
+    secret: bool
+) -> str:
+
+    hint = (' [keep current]' if secret else f' [{current}]') if current else ''
+    answer = (getpass.getpass if secret else input)(f'{question}{hint}: ')
 
     return answer.strip() or current
