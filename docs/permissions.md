@@ -19,7 +19,7 @@ A member may create a times channel when all of these hold:
 
 - The owner has not excluded them.
 - They hold no times channel that is not deleted. An archived one still counts.
-- They have never created one, or the owner gave them a recreation grant after theirs was deleted, and they have not used it yet.
+- They have never created one, or the owner gave them a recreation grant after theirs was deleted, as [Deleted times channels and recreation](recreation.md) explains, and they have not used it yet.
 
 The request is approved at once, without the owner, and the channel is created in the background. Pressing the button again, or two requests at the same time, still create one channel only.
 

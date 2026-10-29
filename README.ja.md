@@ -56,7 +56,7 @@ timesforge import --mapping channels.json --dry-run
 timesforge import --mapping channels.json --apply
 ```
 
-`--dry-run` は、各チャンネルを取り込めるかどうかを表示するだけで、何も変えません。`--apply` は、すべてのチャンネルを取り込めるときだけ取り込みます。
+`--dry-run` は、各チャンネルを取り込めるかどうかを表示するだけで、何も変えません。`--apply` は、すべてのチャンネルを取り込めるときだけ取り込みます。表示される各行の意味は [Running timesforge in a workspace](docs/deployment.md) にあります (英語)。
 
 ## App Home
 
@@ -74,7 +74,7 @@ timesforge import --mapping channels.json --apply
 - **取り込んだチャンネル**: 「確認」で、取り込んだチャンネルの保持者を変更します。
 - **履歴**: 「履歴を見る」で、times チャンネルと作成対象の最近の変更を表示します。
 
-誰が times チャンネルを作成でき、誰が招待されるか、オーナーと作成対象外の扱いは [Times channels and who may create them](docs/permissions.md) にあります (英語)。
+誰が times チャンネルを作成でき、誰が招待されるか、オーナーと作成対象外の扱いは [Times channels and who may create them](docs/permissions.md) に、times チャンネルのアーカイブや削除と再作成権については [Deleted times channels and recreation](docs/recreation.md) にあります (どちらも英語)。
 
 ## 設定
 
@@ -132,4 +132,4 @@ Slack app を止めて、ログイン時の自動起動をやめるには、`tim
 - 後からワークスペースに参加したメンバーは、既存の times チャンネルには招待されません。参加してもらうには、times チャンネルをワークスペースのデフォルトチャンネルに加えるか、各自で参加してもらってください。
 - フリープランでは、Slack は直近 90 日のメッセージしか表示しないので、古い歓迎のメッセージは見えなくなることがあります。times チャンネルを作成できるかどうかは、App Home にいつでも表示されます。
 - 設定ファイルには Slack のトークンが含まれます。macOS と Linux では、本人だけが読めるように保存します。
-- 誰がどの times チャンネルを持ち、誰が作成できるかの記録は、データフォルダのデータベースにしかありません。バックアップしてください。
+- 誰がどの times チャンネルを持ち、誰が作成できるかの記録は、データフォルダのデータベースにしかありません。バックアップしてください。バックアップの方法は、歓迎のメッセージや障害からの復旧とあわせて [Running timesforge in a workspace](docs/deployment.md) にあります (英語)。

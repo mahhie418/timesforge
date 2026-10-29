@@ -56,7 +56,7 @@ timesforge import --mapping channels.json --dry-run
 timesforge import --mapping channels.json --apply
 ```
 
-`--dry-run` shows for each channel whether it can be imported, and changes nothing. `--apply` imports the channels only if every one of them can be.
+`--dry-run` shows for each channel whether it can be imported, and changes nothing. `--apply` imports the channels only if every one of them can be. [Running timesforge in a workspace](docs/deployment.md) explains each line that it prints.
 
 ## App Home
 
@@ -74,7 +74,7 @@ The owner also sees **Owner actions**:
 - **Imported channels.** **Review** changes the holder of an imported channel.
 - **History.** **Show history** lists the latest changes to the times channels and to who may create them.
 
-[Times channels and who may create them](docs/permissions.md) explains who may create a times channel, who is invited to it, and what the owner and exclusions do.
+[Times channels and who may create them](docs/permissions.md) explains who may create a times channel, who is invited to it, and what the owner and exclusions do. [Deleted times channels and recreation](docs/recreation.md) explains what happens when a times channel is archived or deleted, and how recreation grants work.
 
 ## Settings
 
@@ -132,4 +132,4 @@ To stop the Slack app and stop it from starting at login, run `timesforge stop`.
 - Members who join the workspace later are not invited to the existing times channels. To have them join, add the times channels to the default channels of the workspace, or ask them to join.
 - On the Free plan, Slack shows only the last 90 days of messages, so an old welcome message may no longer show. App Home always shows whether a member can create a times channel.
 - The settings file holds the Slack tokens, and on macOS and Linux only you can read it.
-- The database in the data folder is the only record of who holds which times channel and who may create one. Back it up.
+- The database in the data folder is the only record of who holds which times channel and who may create one. Back it up, as [Running timesforge in a workspace](docs/deployment.md) explains, which also covers welcome messages and recovering from failures.
