@@ -308,6 +308,43 @@ class TestTerminalCommandStart:
         with timesforge.slack.application.lock(tmp_path): assert timesforge.terminal.main(['start']) == 1
         assert capsys.readouterr() == ('', f'error: {timesforge.product.NAME} is already running with the data directory {tmp_path}\n')
 
+    def test_log(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        slack: slack_sdk.web.WebClient
+    ) -> None:
+
+        log = pathlib.Path(os.path.join(tmp_path, 'xxx', 'xxx.log'))
+
+        def start(
+            _: slack_bolt.App,
+            token: str,
+            recover: collections.abc.Callable[[str, datetime.datetime], None]
+        ) -> None:
+
+            sys.stdout.write(f'{token}\n')
+            recover('TXXX', datetime.datetime.now(datetime.UTC))
+
+            raise KeyboardInterrupt
+
+        monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
+        monkeypatch.setenv('TIMESFORGE_OWNER_ID', 'UXXX1')
+        monkeypatch.setenv('TIMESFORGE_CHANNEL_ID_WELCOME', 'CXXX0')
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', unittest.mock.Mock(return_value = slack))
+        monkeypatch.setattr(timesforge.slack.application, 'start', start)
+        monkeypatch.setenv('SLACK_APP_TOKEN', '')
+
+        assert timesforge.terminal.main(['start', '--log', str(log)]) == 1
+
+        monkeypatch.setenv('SLACK_APP_TOKEN', 'xapp-xxx')
+
+        assert timesforge.terminal.main(['start', '--log', str(log)]) == 0
+        assert capsys.readouterr() == ('', '')
+        assert log.read_text(encoding = 'utf-8') == 'error: Missing required environment variables: SLACK_APP_TOKEN\nxapp-xxx\n'
+
 class TestTerminalCommandManifest:
 
     def test_manifest(

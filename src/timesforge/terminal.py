@@ -64,6 +64,7 @@ def _build() -> argparse.ArgumentParser:
     mode.add_argument('--apply', action = 'store_true', help = 'import the channels, when every one of them can be')
     start = commands.add_parser('start', help = 'run the Slack app until it is stopped')
     start.set_defaults(handler = _start)
+    start.add_argument('--log', type = pathlib.Path, help = 'file to append the output to', metavar = 'FILE')
     manifest = commands.add_parser('manifest', help = 'print the manifest for creating the Slack app')
     manifest.set_defaults(handler = _manifest)
     doctor = commands.add_parser('doctor', help = 'check the settings, the Slack tokens, the database, the owner and the welcome channel')
@@ -114,8 +115,18 @@ def _import(
     return 1 if errors else 0
 
 def _start(
-    _: argparse.Namespace
+    namespace: argparse.Namespace
 ) -> int:
+
+    log: pathlib.Path | None = namespace.log
+
+    if log is None: return _serve()
+
+    log.parent.mkdir(parents = True, exist_ok = True)
+
+    with log.open('a', encoding = 'utf-8', buffering = 1) as file, contextlib.redirect_stdout(file), contextlib.redirect_stderr(file): return _serve()
+
+def _serve() -> int:
 
     try:
 
