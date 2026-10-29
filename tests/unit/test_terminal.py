@@ -6,11 +6,13 @@ import importlib.resources
 import json
 import os
 import pathlib
+import re
 import sys
 import typing
 import unittest.mock
 import urllib.parse
 import webbrowser
+import wsgiref.simple_server
 
 import dotenv
 import pytest
@@ -20,6 +22,7 @@ import slack_sdk.errors
 
 import timesforge.autostart
 import timesforge.product
+import timesforge.shortener
 import timesforge.slack.api
 import timesforge.slack.application
 import timesforge.storage
@@ -33,52 +36,106 @@ CREATION = datetime.datetime(2026, 10, 29, 15, 0, tzinfo = datetime.UTC)
 ENVIRONMENTS_START = [
     ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxp-xxx', False), ('xoxb-xxx', False)]),
     ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': '', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxb-xxx', False), ('xoxb-xxx', False)]),
-    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': '', 'TIMESFORGE_CHANNEL_ID_WELCOME': ''}, 1, 'error: Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID, TIMESFORGE_CHANNEL_ID_WELCOME\n', [], [])
+    ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': '', 'TIMESFORGE_CHANNEL_ID_WELCOME': ''}, 1, '[ERROR] Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID, TIMESFORGE_CHANNEL_ID_WELCOME\n', [], [])
 ]
 
 ENVIRONMENT_DOCTOR = {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}
 
 CHECKS_DOCTOR = [
-    ({}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: xxx1\nok: welcome channel: #times_xxx\n', ''),
-    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx1\nok: welcome channel: #times_xxx\n', ''),
-    ({'SLACK_APP_TOKEN': ''}, 'UXXX2', 1, '', 'error: Missing required environment variables: SLACK_APP_TOKEN\n'),
-    ({}, 'UXXX1', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\n', 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'),
-    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\n', 'error: UXXX5 is not a member of the workspace\n'),
-    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: xxx1\n', 'error: The bot must be in #xxx to welcome new members\n')
+    ({}, 'UXXX2', 0, '[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n[OK] user token: UXXX2\n[OK] database\n[OK] owner: xxx1\n[OK] welcome channel: #times_xxx\n', ''),
+    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, '[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n[OK] database\n[OK] owner: xxx1\n[OK] welcome channel: #times_xxx\n', ''),
+    ({'SLACK_APP_TOKEN': ''}, 'UXXX2', 1, '', '[ERROR] Missing required environment variables: SLACK_APP_TOKEN\n'),
+    ({}, 'UXXX1', 1, '[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n', '[ERROR] SLACK_USER_TOKEN must belong to an admin of the workspace\n'),
+    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, '[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n[OK] user token: UXXX2\n[OK] database\n', '[ERROR] UXXX5 is not a member of the workspace\n'),
+    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, '[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n[OK] user token: UXXX2\n[OK] database\n[OK] owner: xxx1\n', '[ERROR] The bot must be in #xxx to welcome new members\n')
 ]
 
 TOKENS_SETUP = [
-    (['xoxb-xxx', 'xapp-xxx', ''], '', 0, 'ok: Slack: https://xxx.slack.com/\n', '', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
-    (['xapp-xxx', 'xoxb-xxx', '', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, 'ok: Slack: https://xxx.slack.com/\n', 'error: SLACK_BOT_TOKEN must be a bot token starting with xoxb-\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
-    (['xoxb-xxx', 'xapp-xxx', 'xoxb-xxx', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, 'ok: Slack: https://xxx.slack.com/\n', 'error: SLACK_USER_TOKEN must be a user token starting with xoxp-\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
-    (['', '', '', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, 'ok: Slack: https://xxx.slack.com/\n', 'error: Missing required environment variables: SLACK_BOT_TOKEN, SLACK_APP_TOKEN\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
-    (['', '', ''], 'SLACK_BOT_TOKEN=xoxb-xxx\nSLACK_APP_TOKEN=xapp-xxx\n', 0, 'ok: Slack: https://xxx.slack.com/\n', '', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
-    ([EOFError()], '', 1, '', '\nerror: Setup was stopped\n', {})
+    (['xoxb-xxx', 'xapp-xxx', ''], '', 0, '[OK] Slack: https://xxx.slack.com/\n', '', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
+    (['xapp-xxx', 'xoxb-xxx', '', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, '[OK] Slack: https://xxx.slack.com/\n', '\n[ERROR] SLACK_BOT_TOKEN must be a bot token starting with xoxb-\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
+    (['xoxb-xxx', 'xapp-xxx', 'xoxb-xxx', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, '[OK] Slack: https://xxx.slack.com/\n', '\n[ERROR] SLACK_USER_TOKEN must be a user token starting with xoxp-\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
+    (['', '', '', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, '[OK] Slack: https://xxx.slack.com/\n', '\n[ERROR] Missing required environment variables: SLACK_BOT_TOKEN, SLACK_APP_TOKEN\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
+    (['', '', ''], 'SLACK_BOT_TOKEN=xoxb-xxx\nSLACK_APP_TOKEN=xapp-xxx\n', 0, '[OK] Slack: https://xxx.slack.com/\n', '', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
+    ([EOFError()], '', 1, '', '\n[ERROR] Setup was stopped\n', {})
 ]
 
 OWNERS_SETUP = [
-    (['UXXX2'], 'ok: owner: xxx2\n', '', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
-    (['xxx', 'UXXX2'], 'ok: owner: xxx2\n', 'error: TIMESFORGE_OWNER_ID must be one Slack user ID\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
-    (['UXXX5', 'UXXX2'], 'ok: owner: xxx2\n', 'error: UXXX5 is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
-    (['UXXXB', 'UXXX2'], 'ok: owner: xxx2\n', 'error: UXXXB is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'})
+    (['UXXX2'], '[OK] owner: xxx2\n', '', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
+    (['xxx', 'UXXX2'], '[OK] owner: xxx2\n', '\n[ERROR] TIMESFORGE_OWNER_ID must be one Slack user ID\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
+    (['UXXX5', 'UXXX2'], '[OK] owner: xxx2\n', '\n[ERROR] UXXX5 is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'}),
+    (['UXXXB', 'UXXX2'], '[OK] owner: xxx2\n', '\n[ERROR] UXXXB is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'})
 ]
 
 CHANNELS_SETUP = [
     (['CXXX1'], '', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
-    (['xxx', 'CXXX1'], 'error: TIMESFORGE_CHANNEL_ID_WELCOME must be one Slack channel ID\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
-    (['CXXX2', 'CXXX1'], 'error: The bot must be in #xxx to welcome new members\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'})
+    (['xxx', 'CXXX1'], '\n[ERROR] TIMESFORGE_CHANNEL_ID_WELCOME must be one Slack channel ID\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
+    (['CXXX2', 'CXXX1'], '\n[ERROR] The bot must be in #xxx to welcome new members\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'})
 ]
 
 CHANNELS_IMPORTED = [
-    ([], "ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\nnext: import the times channels that members created by hand with 'timesforge import --mapping FILE': #times_xxx (CXXX1)\nnext: run 'timesforge start' to start the Slack app\n"),
-    ([timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)], "ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\nnext: run 'timesforge start' to start the Slack app\n")
+    ([], "[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n[OK] database\n[OK] owner: xxx2\n[OK] welcome channel: #times_xxx\n[NEXT] import the times channels that members created by hand with 'timesforge import --mapping FILE': #times_xxx (CXXX1)\n\n"),
+    ([timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)], '[OK] settings ({file})\n[OK] Slack: https://xxx.slack.com/\n[OK] app-level token\n[OK] database\n[OK] owner: xxx2\n[OK] welcome channel: #times_xxx\n\n')
 ]
 
 PLATFORMS_SETUP = [
-    (frozenset({sys.platform}), [''], 'ok: autostart: xxx\n', 1),
-    (frozenset({sys.platform}), ['no'], "next: run 'timesforge start' to start the Slack app\n", 0),
-    (frozenset[str](), [], "next: run 'timesforge start' to start the Slack app\n", 0)
+    (frozenset({sys.platform}), [''], '[OK] autostart: xxx\n\n', 1),
+    (frozenset({sys.platform}), ['yes'], '[OK] autostart: xxx\n\n', 1),
+    (frozenset({sys.platform}), ['no'], "[NEXT] run 'timesforge start' to start the Slack app\n\n", 0),
+    (frozenset[str](), [], "[NEXT] run 'timesforge start' to start the Slack app\n\n", 0)
 ]
+
+LAYOUT_SETUP = """
+timesforge (Version: {version})
+
+Open the link below to create the Slack app. Its settings are filled in from the manifest.
+
+>> http://127.0.0.1:0/slack
+
+1. Choose the workspace, then follow the pages to create the app.
+2. Choose Install to Workspace and allow the access the app asks for. Where only admins may create public channels, an admin does this.
+3. In OAuth & Permissions, copy the Bot User OAuth Token (it starts with xoxb-), and the User OAuth Token (it starts with xoxp-) where only admins may create public channels.
+4. In Basic Information, under App-Level Tokens, generate a token with the connections:write scope and copy it (it starts with xapp-).
+
+Paste the Bot User OAuth Token and the App-Level Token, and the User OAuth Token where only admins may create public channels. They stay hidden as you type.
+
+Bot User OAuth Token:
+App-Level Token:
+User OAuth Token:
+
+[OK] Slack: https://xxx.slack.com/
+
+Choose who owns timesforge in Slack, and copy their member ID.
+
+1. In Slack, open their profile.
+2. Choose ⋮ (More), then Copy member ID.
+
+Member ID of the owner:
+
+[OK] owner: xxx2
+
+Choose the channel that new members join, such as #welcome, and copy its channel ID.
+
+1. In Slack, open the channel and choose its name at the top.
+2. At the bottom of About, copy the channel ID.
+3. In the channel, send /invite @timesforge so that the bot joins it.
+
+Channel ID of the welcome channel:
+
+[OK] welcome channel: #times_xxx
+
+[OK] settings ({file})
+[OK] Slack: https://xxx.slack.com/
+[OK] app-level token
+[OK] database
+[OK] owner: xxx2
+[OK] welcome channel: #times_xxx
+[NEXT] import the times channels that members created by hand with 'timesforge import --mapping FILE': #times_xxx (CXXX1)
+
+Start the Slack app automatically when you log in? [Y/n]:
+
+[NEXT] run 'timesforge start' to start the Slack app
+
+"""
 
 def prepare(
     tmp_path: pathlib.Path,
@@ -127,6 +184,15 @@ def answer(
     monkeypatch.setattr(webbrowser, 'open', browse)
 
     return browse
+
+def extract(
+    out: str,
+    line: str
+) -> str:
+
+    lines = out.splitlines()
+
+    return lines[lines.index(line) + 2].removeprefix('>> ')
 
 def test_terminal_version_option(
     capsys: pytest.CaptureFixture[str]
@@ -205,7 +271,7 @@ class TestTerminalCommandImport:
         mapping = prepare(tmp_path, monkeypatch, slack, ['xxx'])
 
         assert timesforge.terminal.main(['import', '--mapping', str(mapping), '--dry-run']) == 1
-        assert capsys.readouterr() == ('', f'error: {mapping} must hold one JSON object\n')
+        assert capsys.readouterr() == ('', f'[ERROR] {mapping} must hold one JSON object\n')
 
     def test_configuration(
         self,
@@ -219,7 +285,7 @@ class TestTerminalCommandImport:
         monkeypatch.setenv('SLACK_BOT_TOKEN', '')
 
         assert timesforge.terminal.main(['import', '--mapping', str(mapping), '--dry-run']) == 1
-        assert capsys.readouterr() == ('', 'error: Missing required environment variables: SLACK_BOT_TOKEN\n')
+        assert capsys.readouterr() == ('', '[ERROR] Missing required environment variables: SLACK_BOT_TOKEN\n')
 
     def test_mode(
         self,
@@ -306,7 +372,7 @@ class TestTerminalCommandStart:
         monkeypatch.setattr(timesforge.slack.application, 'start', unittest.mock.Mock())
 
         with timesforge.slack.application.lock(tmp_path): assert timesforge.terminal.main(['start']) == 1
-        assert capsys.readouterr() == ('', f'error: {timesforge.product.NAME} is already running with the data directory {tmp_path}\n')
+        assert capsys.readouterr() == ('', f'[ERROR] {timesforge.product.NAME} is already running with the data directory {tmp_path}\n')
 
     def test_log(
         self,
@@ -343,7 +409,7 @@ class TestTerminalCommandStart:
 
         assert timesforge.terminal.main(['start', '--log', str(log)]) == 0
         assert capsys.readouterr() == ('', '')
-        assert log.read_text(encoding = 'utf-8') == 'error: Missing required environment variables: SLACK_APP_TOKEN\nxapp-xxx\n'
+        assert log.read_text(encoding = 'utf-8') == '[ERROR] Missing required environment variables: SLACK_APP_TOKEN\nxapp-xxx\n'
 
 class TestTerminalCommandManifest:
 
@@ -424,6 +490,13 @@ class TestTerminalCommandSetup:
 
             return slack
 
+        def shorten(
+            _: str,
+            address: str
+        ) -> str:
+
+            return address
+
         manifest = json.loads(importlib.resources.files('timesforge.slack').joinpath('manifest.json').read_text(encoding = 'utf-8'))
 
         if saved:
@@ -435,13 +508,15 @@ class TestTerminalCommandSetup:
 
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(timesforge.shortener.Shortener, 'shorten', staticmethod(shorten))
         browse = answer(monkeypatch, tokens = tokens)
 
         assert timesforge.terminal.main(['setup']) == status
 
         captured = capsys.readouterr()
-        url: str = browse.call_args_list[0].args[0]
+        url = extract(captured.out, 'Open the link below to create the Slack app. Its settings are filled in from the manifest.')
 
+        assert not browse.called
         assert out in captured.out
         assert captured.err == err
         assert json.loads(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)['manifest_json'][0]) == manifest
@@ -471,7 +546,7 @@ class TestTerminalCommandSetup:
         answer(monkeypatch, tokens = ['xoxb-xxx', 'xapp-xxx1', '', 'xoxb-xxx', 'xapp-xxx2', ''])
 
         assert timesforge.terminal.main(['setup']) == 0
-        assert capsys.readouterr().err == 'error: xxx\nThe server responded with: xxx\n'
+        assert capsys.readouterr().err == '\n[ERROR] xxx\nThe server responded with: xxx\n'
         assert dotenv.dotenv_values(configuration)['SLACK_APP_TOKEN'] == 'xapp-xxx2'
 
     def test_admin(
@@ -499,7 +574,7 @@ class TestTerminalCommandSetup:
         answer(monkeypatch, tokens = ['xoxb-xxx', 'xapp-xxx', 'xoxp-xxx1', 'xoxb-xxx', 'xapp-xxx', 'xoxp-xxx2'])
 
         assert timesforge.terminal.main(['setup']) == 0
-        assert capsys.readouterr().err == 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'
+        assert capsys.readouterr().err == '\n[ERROR] SLACK_USER_TOKEN must belong to an admin of the workspace\n'
         assert dotenv.dotenv_values(configuration)['SLACK_USER_TOKEN'] == 'xoxp-xxx2'
 
     @pytest.mark.parametrize(('owners', 'out', 'err', 'written'), OWNERS_SETUP)
@@ -560,7 +635,7 @@ class TestTerminalCommandSetup:
         answer(monkeypatch)
 
         assert timesforge.terminal.main(['setup']) == 0
-        assert 'ok: owner: 漢字\n' in capsys.readouterr().out
+        assert '[OK] owner: 漢字\n' in capsys.readouterr().out
 
     @pytest.mark.parametrize(('channels', 'err', 'written'), CHANNELS_SETUP)
     def test_channel(
@@ -592,7 +667,7 @@ class TestTerminalCommandSetup:
 
         captured = capsys.readouterr()
 
-        assert 'ok: welcome channel: #times_xxx\n' in captured.out
+        assert '[OK] welcome channel: #times_xxx\n' in captured.out
         assert captured.err == err
         assert {name: value for name, value in dotenv.dotenv_values(configuration).items() if name == 'TIMESFORGE_CHANNEL_ID_WELCOME'} == written
 
@@ -620,8 +695,8 @@ class TestTerminalCommandSetup:
 
         captured = capsys.readouterr()
 
-        assert 'ok: welcome channel: #xxx\n' in captured.out
-        assert captured.err == 'error: The bot must be in #xxx to welcome new members\n'
+        assert '[OK] welcome channel: #xxx\n' in captured.out
+        assert captured.err == '\n[ERROR] The bot must be in #xxx to welcome new members\n'
         assert dotenv.dotenv_values(configuration)['TIMESFORGE_CHANNEL_ID_WELCOME'] == 'CXXX3'
 
     @pytest.mark.parametrize(('channels', 'out'), CHANNELS_IMPORTED)
@@ -658,7 +733,7 @@ class TestTerminalCommandSetup:
 
         captured = capsys.readouterr()
 
-        assert captured.out.endswith(out.format(file = configuration))
+        assert out.format(file = configuration) in captured.out
         assert not captured.err
 
     @pytest.mark.parametrize(('platforms', 'starts', 'out', 'registrations'), PLATFORMS_SETUP)
@@ -722,5 +797,99 @@ class TestTerminalCommandSetup:
         answer(monkeypatch, starts = [''])
 
         assert timesforge.terminal.main(['setup']) == 1
-        assert capsys.readouterr().err == 'error: xxx\n'
+        assert capsys.readouterr().err == '[ERROR] xxx\n'
         assert not register.called
+
+    def test_link(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        answer(monkeypatch)
+
+        assert timesforge.terminal.main(['setup']) == 0
+
+        captured = capsys.readouterr()
+
+        assert re.fullmatch(r'http://127\.0\.0\.1:[0-9]+/slack', extract(captured.out, 'Open the link below to create the Slack app. Its settings are filled in from the manifest.'))
+        assert captured.err == ''
+
+    def test_warning(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(wsgiref.simple_server, 'make_server', unittest.mock.Mock(side_effect = OSError('xxx')))
+        answer(monkeypatch)
+
+        assert timesforge.terminal.main(['setup']) == 0
+
+        captured = capsys.readouterr()
+
+        assert captured.err == '\n[WARNING] Short links are not available on this computer (xxx), so the full address follows\n'
+        assert extract(captured.out, 'Open the link below to create the Slack app. Its settings are filled in from the manifest.').startswith('https://api.slack.com/apps?new_app=1&manifest_json=')
+
+    def test_layout(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient,
+        configuration: pathlib.Path
+    ) -> None:
+
+        answers = ['xoxb-xxx', 'xapp-xxx', '', 'UXXX2', 'CXXX1', 'no']
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        def enter(
+            prompt: str
+        ) -> str:
+
+            sys.stdout.write(f'{prompt.rstrip()}\n')
+
+            return answers.pop(0)
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(getpass, 'getpass', enter)
+        monkeypatch.setattr(builtins, 'input', enter)
+        monkeypatch.setattr(timesforge.autostart, 'PLATFORMS', frozenset({sys.platform}))
+
+        assert timesforge.terminal.main(['setup']) == 0
+        assert re.sub(r'http://127\.0\.0\.1:[0-9]+/', 'http://127.0.0.1:0/', capsys.readouterr().out) == LAYOUT_SETUP.format(version = timesforge.product.VERSION, file = configuration)

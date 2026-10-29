@@ -11,14 +11,17 @@ import pathlib
 import sys
 import typing
 import urllib.parse
-import webbrowser
 
+import rich.console
+import rich.style
+import rich.text
 import slack_bolt.error
 import slack_sdk.errors
 
 import timesforge.autostart
 import timesforge.configuration
 import timesforge.product
+import timesforge.shortener
 import timesforge.slack.api
 import timesforge.slack.application
 import timesforge.slack.existing
@@ -26,6 +29,8 @@ import timesforge.slack.invitation
 import timesforge.storage
 import timesforge.times.naming
 import timesforge.times.registry
+
+_STATUS_STYLES = {'OK': 'bold green', 'NEXT': 'bold cyan', 'WARNING': 'bold yellow', 'ERROR': 'bold red'}
 
 def main(
     arguments: list[str] | None = None
@@ -106,7 +111,7 @@ def _import(
 
     except (OSError, timesforge.configuration.ConfigurationError, timesforge.slack.existing.MappingInvalidError, timesforge.storage.DatabaseError, timesforge.times.registry.ChannelDuplicateError, slack_sdk.errors.SlackApiError) as error:
 
-        print(f'error: {error}', file = sys.stderr)
+        _report('ERROR', str(error))
 
         return 1
 
@@ -137,7 +142,7 @@ def _serve() -> int:
 
     except (timesforge.configuration.ConfigurationError, timesforge.slack.application.LockError, timesforge.storage.DatabaseError, slack_bolt.error.BoltError) as error:
 
-        print(f'error: {error}', file = sys.stderr)
+        _report('ERROR', str(error))
 
         return 1
 
@@ -167,36 +172,36 @@ def _check(
         settings = timesforge.configuration.load()
         settings.require('slack_bot_token', 'slack_app_token', 'timesforge_owner_id', 'timesforge_channel_id_welcome')
 
-        print(f'ok: settings ({timesforge.configuration.locate()})')
+        _report('OK', f'settings ({timesforge.configuration.locate()})')
 
         client = timesforge.slack.api.connect(settings.slack_bot_token)
 
-        print(f"ok: Slack: {client.auth_test().get('url', '')}")
+        _report('OK', f"Slack: {client.auth_test().get('url', '')}")
 
         client.apps_connections_open(app_token = settings.slack_app_token)
 
-        print('ok: app-level token')
+        _report('OK', 'app-level token')
 
-        if settings.slack_user_token: print(f'ok: user token: {_authorise(client, settings.slack_user_token)}')
+        if settings.slack_user_token: _report('OK', f'user token: {_authorise(client, settings.slack_user_token)}')
 
         timesforge.storage.Database(pathlib.Path(os.path.join(settings.timesforge_data_directory, timesforge.storage.DATABASE_FILE))).close()
 
-        print('ok: database')
+        _report('OK', 'database')
 
-        print(f'ok: owner: {_name(client, settings.timesforge_owner_id)}')
+        _report('OK', f'owner: {_name(client, settings.timesforge_owner_id)}')
 
         name = _inspect(client, settings.timesforge_channel_id_welcome)
         channels = _find(client, settings) if guided else []
 
     except (timesforge.configuration.ConfigurationError, timesforge.storage.DatabaseError, slack_sdk.errors.SlackApiError) as error:
 
-        print(f'error: {error}', file = sys.stderr)
+        _report('ERROR', str(error))
 
         return 1
 
-    print(f'ok: welcome channel: #{name}')
+    _report('OK', f'welcome channel: #{name}')
 
-    if channels: print(f"next: import the times channels that members created by hand with '{timesforge.product.COMMAND} import --mapping FILE': {', '.join(f'#{channel.get('name', '')} ({channel.get('id', '')})' for channel in channels)}")
+    if channels: _report('NEXT', f"import the times channels that members created by hand with '{timesforge.product.COMMAND} import --mapping FILE': {', '.join(f'#{channel.get('name', '')} ({channel.get('id', '')})' for channel in channels)}")
 
     return 0
 
@@ -222,49 +227,64 @@ def _setup(
     _: argparse.Namespace
 ) -> int:
 
+    print()
+    _console().print(rich.text.Text.assemble((timesforge.product.NAME, 'bold'), ' ', (f'(Version: {timesforge.product.VERSION})', 'dim')))
+
     try:
 
-        _create(); _appoint(); _welcome()
+        with timesforge.shortener.Shortener() as shortener:
+
+            if shortener.failure is not None: _report('WARNING', f'Short links are not available on this computer ({shortener.failure}), so the full address follows', blank = True)
+
+            _create(shortener); _appoint(); _welcome()
+
+        print()
 
         if (status := _check(guided = True)) == 0: _autostart()
 
     except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError, timesforge.autostart.AutostartError) as error:
 
-        print(f'error: {error}', file = sys.stderr)
+        _report('ERROR', str(error), blank = True)
 
         return 1
 
     except (EOFError, KeyboardInterrupt):
 
-        print('\nerror: Setup was stopped', file = sys.stderr)
+        _report('ERROR', 'Setup was stopped', blank = True)
 
         return 1
 
+    finally:
+
+        print()
+
     return status
 
-def _create() -> None:
+def _create(
+    shortener: timesforge.shortener.Shortener
+) -> None:
 
     settings = timesforge.configuration.load()
     manifest = json.loads(importlib.resources.files('timesforge.slack').joinpath('manifest.json').read_text(encoding = 'utf-8'))
 
     url = f'https://api.slack.com/apps?new_app=1&manifest_json={urllib.parse.quote(json.dumps(manifest, separators = (',', ':')))}'
 
-    print(f'Create the Slack app from its manifest: {url}')
-    print('Choose the workspace, create the app and install it. Then copy the Bot User OAuth Token in OAuth & Permissions, and generate an App-Level Token with the connections:write scope in Basic Information. Where only admins may create public channels, an admin installs the app, and the User OAuth Token in OAuth & Permissions is copied too.', flush = True)
-
-    webbrowser.open(url)
+    print('\nOpen the link below to create the Slack app. Its settings are filled in from the manifest.')
+    _link(shortener.shorten('slack', url))
+    _steps('Choose the workspace, then follow the pages to create the app.', 'Choose Install to Workspace and allow the access the app asks for. Where only admins may create public channels, an admin does this.', 'In OAuth & Permissions, copy the Bot User OAuth Token (it starts with xoxb-), and the User OAuth Token (it starts with xoxp-) where only admins may create public channels.', 'In Basic Information, under App-Level Tokens, generate a token with the connections:write scope and copy it (it starts with xapp-).')
 
     while True:
 
-        bot, app, user = _ask('Bot User OAuth Token', settings.slack_bot_token, secret = True), _ask('App-Level Token', settings.slack_app_token, secret = True), _ask('User OAuth Token, or nothing where members may create public channels', settings.slack_user_token, secret = True)
+        print('\nPaste the Bot User OAuth Token and the App-Level Token, and the User OAuth Token where only admins may create public channels. They stay hidden as you type.\n', flush = True)
+        bot, app, user = _ask('Bot User OAuth Token', settings.slack_bot_token, secret = True), _ask('App-Level Token', settings.slack_app_token, secret = True), _ask('User OAuth Token', settings.slack_user_token, secret = True)
 
         try: identity = _identify(bot, app, user)
-        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
+        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: _report('ERROR', str(error), blank = True)
         else: break
 
     timesforge.configuration.save({'SLACK_BOT_TOKEN': bot, 'SLACK_APP_TOKEN': app, 'SLACK_USER_TOKEN': user})
 
-    print(f"ok: Slack: {identity.get('url', '')}")
+    _report('OK', f"Slack: {identity.get('url', '')}", blank = True)
 
 def _identify(
     bot: str,
@@ -297,19 +317,21 @@ def _appoint() -> None:
     settings = timesforge.configuration.load()
     client = timesforge.slack.api.connect(settings.slack_bot_token)
 
-    print('Copy the member ID of the owner in Slack: open the profile, choose the ⋮ button and Copy member ID.', flush = True)
+    print(f'\nChoose who owns {timesforge.product.NAME} in Slack, and copy their member ID.')
+    _steps('In Slack, open their profile.', 'Choose ⋮ (More), then Copy member ID.')
 
     while True:
 
+        print()
         owner = _ask('Member ID of the owner', settings.timesforge_owner_id, secret = False)
 
         try: name = _name(client, owner)
-        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
+        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: _report('ERROR', str(error), blank = True)
         else: break
 
     timesforge.configuration.save({'TIMESFORGE_OWNER_ID': owner})
 
-    print(f'ok: owner: {name}')
+    _report('OK', f'owner: {name}', blank = True)
 
 def _name(
     client: slack_sdk.web.WebClient,
@@ -331,19 +353,21 @@ def _welcome() -> None:
     client = timesforge.slack.api.connect(settings.slack_bot_token)
     channel = settings.timesforge_channel_id_welcome
 
-    print(f'Copy the channel ID of the channel that new members join, such as #welcome: open the channel, choose its name and find the channel ID at the bottom. Then invite the bot there with /invite @{timesforge.product.NAME}.', flush = True)
+    print('\nChoose the channel that new members join, such as #welcome, and copy its channel ID.')
+    _steps('In Slack, open the channel and choose its name at the top.', 'At the bottom of About, copy the channel ID.', f'In the channel, send /invite @{timesforge.product.NAME} so that the bot joins it.')
 
     while True:
 
+        print()
         channel = _ask('Channel ID of the welcome channel', channel, secret = False)
 
         try: name = _inspect(client, channel)
-        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
+        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: _report('ERROR', str(error), blank = True)
         else: break
 
     timesforge.configuration.save({'TIMESFORGE_CHANNEL_ID_WELCOME': channel})
 
-    print(f'ok: welcome channel: #{name}')
+    _report('OK', f'welcome channel: #{name}', blank = True)
 
 def _inspect(
     client: slack_sdk.web.WebClient,
@@ -359,15 +383,17 @@ def _inspect(
 
 def _autostart() -> None:
 
-    if sys.platform not in timesforge.autostart.PLATFORMS or _ask('Start the Slack app at login, yes or no', 'yes', secret = False).lower() not in {'y', 'yes'}:
+    if sys.platform in timesforge.autostart.PLATFORMS: print()
 
-        print(f"next: run '{timesforge.product.COMMAND} start' to start the Slack app")
+    if sys.platform not in timesforge.autostart.PLATFORMS or not _agree('Start the Slack app automatically when you log in?', default = True):
+
+        _report('NEXT', f"run '{timesforge.product.COMMAND} start' to start the Slack app", blank = True)
 
         return
 
     log = pathlib.Path(os.path.join(timesforge.configuration.load().timesforge_data_directory, 'start.log'))
 
-    print(f'ok: autostart: {timesforge.autostart.register(log)}')
+    _report('OK', f'autostart: {timesforge.autostart.register(log)}', blank = True)
 
 def _ask(
     question: str,
@@ -380,3 +406,47 @@ def _ask(
     answer = (getpass.getpass if secret else input)(f'{question}{hint}: ')
 
     return answer.strip() or current
+
+def _agree(
+    question: str,
+    *,
+    default: bool
+) -> bool:
+
+    hint = '[Y/n]' if default else '[y/N]'
+    answer = input(f'{question} {hint}: ').strip().lower()
+
+    return answer in {'y', 'yes'} if answer else default
+
+def _steps(
+    *steps: str
+) -> None:
+
+    console = _console()
+    console.print()
+
+    for number, step in enumerate(steps, start = 1): console.print(rich.text.Text.assemble((f'{number}.', 'bold'), f' {step}'))
+
+def _link(
+    url: str
+) -> None:
+
+    console = _console()
+    console.print()
+    console.print(rich.text.Text.assemble('>> ', (url, rich.style.Style(underline = True, link = url))))
+
+def _report(
+    status: str,
+    message: str,
+    *,
+    blank: bool = False
+) -> None:
+
+    _console(stderr = status in {'WARNING', 'ERROR'}).print(rich.text.Text.assemble('\n' if blank else '', (f'[{status}]', _STATUS_STYLES[status]), f' {message}'))
+
+def _console(
+    *,
+    stderr: bool = False
+) -> rich.console.Console:
+
+    return rich.console.Console(stderr = stderr, soft_wrap = True, highlight = False, markup = False, emoji = False)
