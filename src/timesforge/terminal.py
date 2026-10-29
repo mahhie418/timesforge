@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import sys
+import typing
 import urllib.parse
 import webbrowser
 
@@ -22,6 +23,7 @@ import timesforge.slack.application
 import timesforge.slack.existing
 import timesforge.slack.invitation
 import timesforge.storage
+import timesforge.times.naming
 import timesforge.times.registry
 
 def main(
@@ -141,6 +143,13 @@ def _doctor(
     _: argparse.Namespace
 ) -> int:
 
+    return _check(guided = False)
+
+def _check(
+    *,
+    guided: bool
+) -> int:
+
     try:
 
         settings = timesforge.configuration.load()
@@ -165,6 +174,7 @@ def _doctor(
         print(f'ok: owner: {_name(client, settings.timesforge_owner_id)}')
 
         name = _inspect(client, settings.timesforge_channel_id_welcome)
+        channels = _find(client, settings) if guided else []
 
     except (timesforge.configuration.ConfigurationError, timesforge.storage.DatabaseError, slack_sdk.errors.SlackApiError) as error:
 
@@ -174,7 +184,27 @@ def _doctor(
 
     print(f'ok: welcome channel: #{name}')
 
+    if channels: print(f"next: import the times channels that members created by hand with '{timesforge.product.COMMAND} import --mapping FILE': {', '.join(f'#{channel.get('name', '')} ({channel.get('id', '')})' for channel in channels)}")
+
     return 0
+
+def _find(
+    client: slack_sdk.web.WebClient,
+    settings: timesforge.configuration.Settings
+) -> list[dict[str, typing.Any]]:
+
+    workspace_id = client.auth_test().get('team_id', '')
+    database = timesforge.storage.Database(pathlib.Path(os.path.join(settings.timesforge_data_directory, timesforge.storage.DATABASE_FILE)))
+
+    try:
+
+        registry = timesforge.times.registry.RegistryIO(database)
+
+        return [channel for channel in timesforge.slack.api.channels(client) if channel.get('name', '').startswith(timesforge.times.naming.PREFIX) and registry.load(workspace_id, channel.get('id', '')) is None]
+
+    finally:
+
+        database.close()
 
 def _setup(
     _: argparse.Namespace
@@ -196,7 +226,7 @@ def _setup(
 
         return 1
 
-    return 0
+    return _check(guided = True)
 
 def _create() -> None:
 

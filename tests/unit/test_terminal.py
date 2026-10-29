@@ -22,8 +22,11 @@ import timesforge.slack.api
 import timesforge.slack.application
 import timesforge.storage
 import timesforge.terminal
+import timesforge.times.registry
 
 CHANNELS_COUNT = 'SELECT count(*) FROM channel'
+
+CREATION = datetime.datetime(2026, 10, 29, 15, 0, tzinfo = datetime.UTC)
 
 ENVIRONMENTS_START = [
     ({'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX0'}, 0, '', ['xapp-xxx'], [('xoxb-xxx', True), ('xoxp-xxx', False), ('xoxb-xxx', False)]),
@@ -62,6 +65,11 @@ CHANNELS_SETUP = [
     (['CXXX1'], '', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
     (['xxx', 'CXXX1'], 'error: TIMESFORGE_CHANNEL_ID_WELCOME must be one Slack channel ID\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
     (['CXXX2', 'CXXX1'], 'error: The bot must be in #xxx to welcome new members\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'})
+]
+
+CHANNELS_IMPORTED = [
+    ([], "ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\nnext: import the times channels that members created by hand with 'timesforge import --mapping FILE': #times_xxx (CXXX1)\n"),
+    ([timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)], 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\n')
 ]
 
 def prepare(
@@ -350,6 +358,7 @@ class TestTerminalCommandSetup:
     @pytest.mark.parametrize(('tokens', 'saved', 'status', 'out', 'err', 'written'), TOKENS_SETUP)
     def test_slack(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         workspace: dict[str, typing.Any],
@@ -378,6 +387,7 @@ class TestTerminalCommandSetup:
 
         workspace['channels'][0]['is_member'] = True
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         browse = answer(monkeypatch, tokens = tokens)
 
@@ -393,6 +403,7 @@ class TestTerminalCommandSetup:
 
     def test_refusal(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         workspace: dict[str, typing.Any],
@@ -408,8 +419,9 @@ class TestTerminalCommandSetup:
 
         workspace['channels'][0]['is_member'] = True
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
-        monkeypatch.setattr(slack, 'apps_connections_open', unittest.mock.Mock(side_effect = [slack_sdk.errors.SlackApiError('xxx', 'xxx'), {'url': 'wss://xxx'}]))
+        monkeypatch.setattr(slack, 'apps_connections_open', unittest.mock.Mock(side_effect = [slack_sdk.errors.SlackApiError('xxx', 'xxx'), {'url': 'wss://xxx'}, {'url': 'wss://xxx'}]))
         answer(monkeypatch, tokens = ['xoxb-xxx', 'xapp-xxx1', '', 'xoxb-xxx', 'xapp-xxx2', ''])
 
         assert timesforge.terminal.main(['setup']) == 0
@@ -418,6 +430,7 @@ class TestTerminalCommandSetup:
 
     def test_admin(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         workspace: dict[str, typing.Any],
@@ -434,8 +447,9 @@ class TestTerminalCommandSetup:
 
         workspace['channels'][0]['is_member'] = True
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
-        monkeypatch.setattr(writer, 'auth_test', unittest.mock.Mock(side_effect = [{'user_id': 'UXXX1'}, {'user_id': 'UXXX2'}]))
+        monkeypatch.setattr(writer, 'auth_test', unittest.mock.Mock(side_effect = [{'user_id': 'UXXX1'}, {'user_id': 'UXXX2'}, {'user_id': 'UXXX2'}]))
         answer(monkeypatch, tokens = ['xoxb-xxx', 'xapp-xxx', 'xoxp-xxx1', 'xoxb-xxx', 'xapp-xxx', 'xoxp-xxx2'])
 
         assert timesforge.terminal.main(['setup']) == 0
@@ -445,6 +459,7 @@ class TestTerminalCommandSetup:
     @pytest.mark.parametrize(('owners', 'out', 'err', 'written'), OWNERS_SETUP)
     def test_owner(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         workspace: dict[str, typing.Any],
@@ -464,6 +479,7 @@ class TestTerminalCommandSetup:
 
         workspace['channels'][0]['is_member'] = True
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         answer(monkeypatch, owners = owners)
 
@@ -477,6 +493,7 @@ class TestTerminalCommandSetup:
 
     def test_profile(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         workspace: dict[str, typing.Any],
@@ -491,6 +508,7 @@ class TestTerminalCommandSetup:
 
         workspace['channels'][0]['is_member'] = True
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(slack, 'users_info', unittest.mock.Mock(return_value = {'user': {'id': 'UXXX2', 'name': 'xxx1', 'profile': {'display_name': '漢字', 'real_name': 'xxx2'}}}))
         answer(monkeypatch)
@@ -501,6 +519,7 @@ class TestTerminalCommandSetup:
     @pytest.mark.parametrize(('channels', 'err', 'written'), CHANNELS_SETUP)
     def test_channel(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         workspace: dict[str, typing.Any],
@@ -519,6 +538,7 @@ class TestTerminalCommandSetup:
 
         workspace['channels'][0]['is_member'] = True
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         answer(monkeypatch, channels = channels)
 
@@ -526,12 +546,13 @@ class TestTerminalCommandSetup:
 
         captured = capsys.readouterr()
 
-        assert captured.out.endswith('ok: welcome channel: #times_xxx\n')
+        assert 'ok: welcome channel: #times_xxx\n' in captured.out
         assert captured.err == err
         assert {name: value for name, value in dotenv.dotenv_values(configuration).items() if name == 'TIMESFORGE_CHANNEL_ID_WELCOME'} == written
 
     def test_invitation(
         self,
+        tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         slack: slack_sdk.web.WebClient,
@@ -544,14 +565,52 @@ class TestTerminalCommandSetup:
 
             return slack
 
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
-        monkeypatch.setattr(slack, 'conversations_info', unittest.mock.Mock(side_effect = [{'channel': {'id': 'CXXX3', 'name': 'xxx'}}, {'channel': {'id': 'CXXX3', 'name': 'xxx', 'is_member': True}}]))
+        monkeypatch.setattr(slack, 'conversations_info', unittest.mock.Mock(side_effect = [{'channel': {'id': 'CXXX3', 'name': 'xxx'}}, {'channel': {'id': 'CXXX3', 'name': 'xxx', 'is_member': True}}, {'channel': {'id': 'CXXX3', 'name': 'xxx', 'is_member': True}}]))
         answer(monkeypatch, channels = ['CXXX3', ''])
 
         assert timesforge.terminal.main(['setup']) == 0
 
         captured = capsys.readouterr()
 
-        assert captured.out.endswith('ok: welcome channel: #xxx\n')
+        assert 'ok: welcome channel: #xxx\n' in captured.out
         assert captured.err == 'error: The bot must be in #xxx to welcome new members\n'
         assert dotenv.dotenv_values(configuration)['TIMESFORGE_CHANNEL_ID_WELCOME'] == 'CXXX3'
+
+    @pytest.mark.parametrize(('channels', 'out'), CHANNELS_IMPORTED)
+    def test_check(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient,
+        database: timesforge.storage.Database,
+        configuration: pathlib.Path,
+        channels: list[timesforge.times.registry.Channel],
+        out: str
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        registry = timesforge.times.registry.RegistryIO(database)
+
+        for channel in channels: registry.save('TXXX', channel)
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        answer(monkeypatch)
+
+        assert timesforge.terminal.main(['setup']) == 0
+
+        captured = capsys.readouterr()
+
+        assert captured.out.endswith(out.format(file = configuration))
+        assert not captured.err
