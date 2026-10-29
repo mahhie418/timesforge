@@ -58,6 +58,12 @@ OWNERS_SETUP = [
     (['UXXXB', 'UXXX2'], 'ok: owner: xxx2\n', 'error: UXXXB is not a member of the workspace\n', {'TIMESFORGE_OWNER_ID': 'UXXX2'})
 ]
 
+CHANNELS_SETUP = [
+    (['CXXX1'], '', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
+    (['xxx', 'CXXX1'], 'error: TIMESFORGE_CHANNEL_ID_WELCOME must be one Slack channel ID\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}),
+    (['CXXX2', 'CXXX1'], 'error: The bot must be in #xxx to welcome new members\n', {'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'})
+]
+
 def prepare(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -93,13 +99,14 @@ def answer(
     monkeypatch: pytest.MonkeyPatch,
     *,
     tokens: collections.abc.Sequence[str | Exception] = ('xoxb-xxx', 'xapp-xxx', ''),
-    owners: collections.abc.Sequence[str | Exception] = ('UXXX2',)
+    owners: collections.abc.Sequence[str | Exception] = ('UXXX2',),
+    channels: collections.abc.Sequence[str | Exception] = ('CXXX1',)
 ) -> unittest.mock.Mock:
 
     browse = unittest.mock.Mock()
 
     monkeypatch.setattr(getpass, 'getpass', unittest.mock.Mock(side_effect = tokens))
-    monkeypatch.setattr(builtins, 'input', unittest.mock.Mock(side_effect = owners))
+    monkeypatch.setattr(builtins, 'input', unittest.mock.Mock(side_effect = [*owners, *channels]))
     monkeypatch.setattr(webbrowser, 'open', browse)
 
     return browse
@@ -345,6 +352,7 @@ class TestTerminalCommandSetup:
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
         slack: slack_sdk.web.WebClient,
         configuration: pathlib.Path,
         tokens: list[str | Exception],
@@ -368,6 +376,8 @@ class TestTerminalCommandSetup:
             configuration.parent.mkdir()
             configuration.write_text(saved, encoding = 'utf-8')
 
+        workspace['channels'][0]['is_member'] = True
+
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         browse = answer(monkeypatch, tokens = tokens)
 
@@ -385,6 +395,7 @@ class TestTerminalCommandSetup:
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
         slack: slack_sdk.web.WebClient,
         configuration: pathlib.Path
     ) -> None:
@@ -394,6 +405,8 @@ class TestTerminalCommandSetup:
         ) -> slack_sdk.web.WebClient:
 
             return slack
+
+        workspace['channels'][0]['is_member'] = True
 
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(slack, 'apps_connections_open', unittest.mock.Mock(side_effect = [slack_sdk.errors.SlackApiError('xxx', 'xxx'), {'url': 'wss://xxx'}]))
@@ -407,6 +420,7 @@ class TestTerminalCommandSetup:
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
         slack: slack_sdk.web.WebClient,
         writer: slack_sdk.web.WebClient,
         configuration: pathlib.Path
@@ -417,6 +431,8 @@ class TestTerminalCommandSetup:
         ) -> slack_sdk.web.WebClient:
 
             return writer if token.startswith('xoxp-') else slack
+
+        workspace['channels'][0]['is_member'] = True
 
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(writer, 'auth_test', unittest.mock.Mock(side_effect = [{'user_id': 'UXXX1'}, {'user_id': 'UXXX2'}]))
@@ -431,6 +447,7 @@ class TestTerminalCommandSetup:
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
         slack: slack_sdk.web.WebClient,
         configuration: pathlib.Path,
         owners: list[str],
@@ -445,6 +462,8 @@ class TestTerminalCommandSetup:
 
             return slack
 
+        workspace['channels'][0]['is_member'] = True
+
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         answer(monkeypatch, owners = owners)
 
@@ -454,12 +473,13 @@ class TestTerminalCommandSetup:
 
         assert out in captured.out
         assert captured.err == err
-        assert {name: value for name, value in dotenv.dotenv_values(configuration).items() if name.startswith('TIMESFORGE_')} == written
+        assert {name: value for name, value in dotenv.dotenv_values(configuration).items() if name == 'TIMESFORGE_OWNER_ID'} == written
 
     def test_profile(
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
         slack: slack_sdk.web.WebClient
     ) -> None:
 
@@ -469,9 +489,69 @@ class TestTerminalCommandSetup:
 
             return slack
 
+        workspace['channels'][0]['is_member'] = True
+
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(slack, 'users_info', unittest.mock.Mock(return_value = {'user': {'id': 'UXXX2', 'name': 'xxx1', 'profile': {'display_name': '漢字', 'real_name': 'xxx2'}}}))
         answer(monkeypatch)
 
         assert timesforge.terminal.main(['setup']) == 0
         assert 'ok: owner: 漢字\n' in capsys.readouterr().out
+
+    @pytest.mark.parametrize(('channels', 'err', 'written'), CHANNELS_SETUP)
+    def test_channel(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient,
+        configuration: pathlib.Path,
+        channels: list[str],
+        err: str,
+        written: dict[str, str]
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        answer(monkeypatch, channels = channels)
+
+        assert timesforge.terminal.main(['setup']) == 0
+
+        captured = capsys.readouterr()
+
+        assert captured.out.endswith('ok: welcome channel: #times_xxx\n')
+        assert captured.err == err
+        assert {name: value for name, value in dotenv.dotenv_values(configuration).items() if name == 'TIMESFORGE_CHANNEL_ID_WELCOME'} == written
+
+    def test_invitation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        slack: slack_sdk.web.WebClient,
+        configuration: pathlib.Path
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(slack, 'conversations_info', unittest.mock.Mock(side_effect = [{'channel': {'id': 'CXXX3', 'name': 'xxx'}}, {'channel': {'id': 'CXXX3', 'name': 'xxx', 'is_member': True}}]))
+        answer(monkeypatch, channels = ['CXXX3', ''])
+
+        assert timesforge.terminal.main(['setup']) == 0
+
+        captured = capsys.readouterr()
+
+        assert captured.out.endswith('ok: welcome channel: #xxx\n')
+        assert captured.err == 'error: The bot must be in #xxx to welcome new members\n'
+        assert dotenv.dotenv_values(configuration)['TIMESFORGE_CHANNEL_ID_WELCOME'] == 'CXXX3'

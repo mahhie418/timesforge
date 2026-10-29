@@ -65,7 +65,7 @@ def _build() -> argparse.ArgumentParser:
     manifest.set_defaults(handler = _manifest)
     doctor = commands.add_parser('doctor', help = 'check the settings, the Slack tokens, the database, the owner and the welcome channel')
     doctor.set_defaults(handler = _doctor)
-    setup = commands.add_parser('setup', help = 'create the Slack app and choose the owner, writing the settings file')
+    setup = commands.add_parser('setup', help = 'create the Slack app and choose the owner and the welcome channel, writing the settings file')
     setup.set_defaults(handler = _setup)
 
     return parser
@@ -164,9 +164,7 @@ def _doctor(
 
         print(f'ok: owner: {_name(client, settings.timesforge_owner_id)}')
 
-        channel = client.conversations_info(channel = settings.timesforge_channel_id_welcome).get('channel', {})
-
-        if not channel.get('is_member'): raise timesforge.configuration.ConfigurationError(f"The bot must be in #{channel.get('name', '')} to welcome new members")
+        name = _inspect(client, settings.timesforge_channel_id_welcome)
 
     except (timesforge.configuration.ConfigurationError, timesforge.storage.DatabaseError, slack_sdk.errors.SlackApiError) as error:
 
@@ -174,7 +172,7 @@ def _doctor(
 
         return 1
 
-    print(f"ok: welcome channel: #{channel.get('name', '')}")
+    print(f'ok: welcome channel: #{name}')
 
     return 0
 
@@ -184,7 +182,7 @@ def _setup(
 
     try:
 
-        _create(); _appoint()
+        _create(); _appoint(); _welcome()
 
     except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error:
 
@@ -282,6 +280,38 @@ def _name(
     profile = entry.get('profile', {})
 
     return profile.get('display_name') or profile.get('real_name') or entry.get('name') or user
+
+def _welcome() -> None:
+
+    settings = timesforge.configuration.load()
+    client = timesforge.slack.api.connect(settings.slack_bot_token)
+    channel = settings.timesforge_channel_id_welcome
+
+    print(f'Copy the channel ID of the channel that new members join, such as #welcome: open the channel, choose its name and find the channel ID at the bottom. Then invite the bot there with /invite @{timesforge.product.NAME}.', flush = True)
+
+    while True:
+
+        channel = _ask('Channel ID of the welcome channel', channel, secret = False)
+
+        try: name = _inspect(client, channel)
+        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
+        else: break
+
+    timesforge.configuration.save({'TIMESFORGE_CHANNEL_ID_WELCOME': channel})
+
+    print(f'ok: welcome channel: #{name}')
+
+def _inspect(
+    client: slack_sdk.web.WebClient,
+    channel: str
+) -> str:
+
+    timesforge.configuration.load({'TIMESFORGE_CHANNEL_ID_WELCOME': channel}).require('timesforge_channel_id_welcome')
+    entry = client.conversations_info(channel = channel).get('channel', {})
+
+    if not entry.get('is_member'): raise timesforge.configuration.ConfigurationError(f"The bot must be in #{entry.get('name', '')} to welcome new members")
+
+    return entry.get('name', '')
 
 def _ask(
     question: str,
