@@ -3,10 +3,14 @@
 import argparse
 import contextlib
 import datetime
+import getpass
 import importlib.resources
+import json
 import os
 import pathlib
 import sys
+import urllib.parse
+import webbrowser
 
 import slack_bolt.error
 import slack_sdk.errors
@@ -61,6 +65,8 @@ def _build() -> argparse.ArgumentParser:
     manifest.set_defaults(handler = _manifest)
     doctor = commands.add_parser('doctor', help = 'check the settings, the Slack tokens, the database, the owner and the welcome channel')
     doctor.set_defaults(handler = _doctor)
+    setup = commands.add_parser('setup', help = 'create the Slack app and write its tokens into the settings file')
+    setup.set_defaults(handler = _setup)
 
     return parser
 
@@ -150,13 +156,7 @@ def _doctor(
 
         print('ok: app-level token')
 
-        if settings.slack_user_token:
-
-            admin = timesforge.slack.api.connect(settings.slack_user_token).auth_test().get('user_id', '')
-
-            if not client.users_info(user = admin).get('user', {}).get('is_admin'): raise timesforge.configuration.ConfigurationError('SLACK_USER_TOKEN must belong to an admin of the workspace')
-
-            print(f'ok: user token: {admin}')
+        if settings.slack_user_token: print(f'ok: user token: {_authorise(client, settings.slack_user_token)}')
 
         timesforge.storage.Database(pathlib.Path(os.path.join(settings.timesforge_data_directory, timesforge.storage.DATABASE_FILE))).close()
 
@@ -179,3 +179,82 @@ def _doctor(
     print(f"ok: welcome channel: #{channel.get('name', '')}")
 
     return 0
+
+def _setup(
+    _: argparse.Namespace
+) -> int:
+
+    try:
+
+        _create()
+
+    except timesforge.configuration.ConfigurationError as error:
+
+        print(f'error: {error}', file = sys.stderr)
+
+        return 1
+
+    except (EOFError, KeyboardInterrupt):
+
+        print('\nerror: Setup was stopped', file = sys.stderr)
+
+        return 1
+
+    return 0
+
+def _create() -> None:
+
+    settings = timesforge.configuration.load()
+    manifest = json.loads(importlib.resources.files('timesforge.slack').joinpath('manifest.json').read_text(encoding = 'utf-8'))
+    url = f'https://api.slack.com/apps?new_app=1&manifest_json={urllib.parse.quote(json.dumps(manifest, separators = (',', ':')))}'
+
+    print(f'Create the Slack app from its manifest: {url}')
+    print('Choose the workspace, create the app and install it. Then copy the Bot User OAuth Token in OAuth & Permissions, and generate an App-Level Token with the connections:write scope in Basic Information. Where only admins may create public channels, an admin installs the app, and the User OAuth Token in OAuth & Permissions is copied too.', flush = True)
+    webbrowser.open(url)
+
+    while True:
+
+        bot, app, user = _ask('Bot User OAuth Token', settings.slack_bot_token), _ask('App-Level Token', settings.slack_app_token), _ask('User OAuth Token, or nothing where members may create public channels', settings.slack_user_token)
+
+        try: identity = _identify(bot, app, user)
+        except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: print(f'error: {error}', file = sys.stderr)
+        else: break
+
+    timesforge.configuration.save({'SLACK_BOT_TOKEN': bot, 'SLACK_APP_TOKEN': app, 'SLACK_USER_TOKEN': user})
+
+    print(f"ok: Slack: {identity.get('url', '')}")
+
+def _identify(
+    bot: str,
+    app: str,
+    user: str
+) -> slack_sdk.web.SlackResponse:
+
+    timesforge.configuration.load({'SLACK_BOT_TOKEN': bot, 'SLACK_APP_TOKEN': app, 'SLACK_USER_TOKEN': user}).require('slack_bot_token', 'slack_app_token')
+    client = timesforge.slack.api.connect(bot)
+    identity = client.auth_test()
+    client.apps_connections_open(app_token = app)
+
+    if user: _authorise(client, user)
+
+    return identity
+
+def _authorise(
+    client: slack_sdk.web.WebClient,
+    token: str
+) -> str:
+
+    admin = timesforge.slack.api.connect(token).auth_test().get('user_id', '')
+
+    if not client.users_info(user = admin).get('user', {}).get('is_admin'): raise timesforge.configuration.ConfigurationError('SLACK_USER_TOKEN must belong to an admin of the workspace')
+
+    return admin
+
+def _ask(
+    question: str,
+    current: str
+) -> str:
+
+    answer = getpass.getpass(f'{question}{' [keep current]' if current else ''}: ')
+
+    return answer.strip() or current

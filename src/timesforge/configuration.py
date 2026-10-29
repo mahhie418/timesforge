@@ -1,4 +1,4 @@
-"""Configuration read from environment variables and the settings file of the user."""
+"""Configuration read from environment variables and the settings file of the user, which setup writes."""
 
 import collections.abc
 import dataclasses
@@ -110,6 +110,26 @@ def load(
         timesforge_data_directory = _parse('TIMESFORGE_DATA_DIRECTORY', environment, category = 'directory'),
         timesforge_language_display = _parse('TIMESFORGE_LANGUAGE_DISPLAY', environment, category = 'language')
     )
+
+def save(
+    values: collections.abc.Mapping[str, str]
+) -> None:
+
+    """Writes values into the settings file, keeping its other lines.
+
+    The file and its directory are created when missing, and only the user
+    may read the file on POSIX systems, because it holds credentials.
+
+    Args:
+        values: Values by environment variable name.
+    """
+
+    file = locate()
+    file.parent.mkdir(mode = 0o700, parents = True, exist_ok = True)
+
+    for name, value in values.items(): dotenv.set_key(file, name, value, quote_mode = 'never')
+
+    file.chmod(0o600)
 
 def locate() -> pathlib.Path:
 
