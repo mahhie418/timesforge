@@ -74,6 +74,8 @@ timesforge import --mapping channels.json --apply
 - **取り込んだチャンネル**: 「確認」で、取り込んだチャンネルの保持者を変更します。
 - **履歴**: 「履歴を見る」で、times チャンネルと作成対象の最近の変更を表示します。
 
+誰が times チャンネルを作成でき、誰が招待されるか、オーナーと作成対象外の扱いは [Times channels and who may create them](docs/permissions.md) にあります (英語)。
+
 ## 設定
 
 timesforge は、設定フォルダの `timesforge.env` を読み込みます。同じ名前の環境変数があれば、そちらを優先します。

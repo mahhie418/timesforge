@@ -74,6 +74,8 @@ The owner also sees **Owner actions**:
 - **Imported channels.** **Review** changes the holder of an imported channel.
 - **History.** **Show history** lists the latest changes to the times channels and to who may create them.
 
+[Times channels and who may create them](docs/permissions.md) explains who may create a times channel, who is invited to it, and what the owner and exclusions do.
+
 ## Settings
 
 timesforge reads `timesforge.env` in your configuration folder. Environment variables take precedence over the file.
