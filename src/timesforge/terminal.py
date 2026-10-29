@@ -16,6 +16,7 @@ import webbrowser
 import slack_bolt.error
 import slack_sdk.errors
 
+import timesforge.autostart
 import timesforge.configuration
 import timesforge.product
 import timesforge.slack.api
@@ -67,7 +68,7 @@ def _build() -> argparse.ArgumentParser:
     manifest.set_defaults(handler = _manifest)
     doctor = commands.add_parser('doctor', help = 'check the settings, the Slack tokens, the database, the owner and the welcome channel')
     doctor.set_defaults(handler = _doctor)
-    setup = commands.add_parser('setup', help = 'create the Slack app and choose the owner and the welcome channel, writing the settings file')
+    setup = commands.add_parser('setup', help = 'create the Slack app, choose the owner and the welcome channel and start the Slack app at login, writing the settings file')
     setup.set_defaults(handler = _setup)
 
     return parser
@@ -214,7 +215,9 @@ def _setup(
 
         _create(); _appoint(); _welcome()
 
-    except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error:
+        if (status := _check(guided = True)) == 0: _autostart()
+
+    except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError, timesforge.autostart.AutostartError) as error:
 
         print(f'error: {error}', file = sys.stderr)
 
@@ -226,7 +229,7 @@ def _setup(
 
         return 1
 
-    return _check(guided = True)
+    return status
 
 def _create() -> None:
 
@@ -342,6 +345,18 @@ def _inspect(
     if not entry.get('is_member'): raise timesforge.configuration.ConfigurationError(f"The bot must be in #{entry.get('name', '')} to welcome new members")
 
     return entry.get('name', '')
+
+def _autostart() -> None:
+
+    if sys.platform not in timesforge.autostart.PLATFORMS or _ask('Start the Slack app at login, yes or no', 'yes', secret = False).lower() not in {'y', 'yes'}:
+
+        print(f"next: run '{timesforge.product.COMMAND} start' to start the Slack app")
+
+        return
+
+    log = pathlib.Path(os.path.join(timesforge.configuration.load().timesforge_data_directory, 'start.log'))
+
+    print(f'ok: autostart: {timesforge.autostart.register(log)}')
 
 def _ask(
     question: str,

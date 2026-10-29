@@ -40,6 +40,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/timesforge/autostart.py" = [
+    "S603"
+]
 "src/timesforge/terminal.py" = [
     "T201"
 ]

@@ -6,6 +6,7 @@ import importlib.resources
 import json
 import os
 import pathlib
+import sys
 import typing
 import unittest.mock
 import urllib.parse
@@ -17,6 +18,7 @@ import slack_bolt
 import slack_sdk
 import slack_sdk.errors
 
+import timesforge.autostart
 import timesforge.product
 import timesforge.slack.api
 import timesforge.slack.application
@@ -68,8 +70,14 @@ CHANNELS_SETUP = [
 ]
 
 CHANNELS_IMPORTED = [
-    ([], "ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\nnext: import the times channels that members created by hand with 'timesforge import --mapping FILE': #times_xxx (CXXX1)\n"),
-    ([timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)], 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\n')
+    ([], "ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\nnext: import the times channels that members created by hand with 'timesforge import --mapping FILE': #times_xxx (CXXX1)\nnext: run 'timesforge start' to start the Slack app\n"),
+    ([timesforge.times.registry.Channel(channel_id = 'CXXX1', holder_id = 'UXXX1', first_name = 'xxx', channel_name = 'times_xxx', source = 'imported', creation = CREATION)], "ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: xxx2\nok: welcome channel: #times_xxx\nnext: run 'timesforge start' to start the Slack app\n")
+]
+
+PLATFORMS_SETUP = [
+    (frozenset({sys.platform}), [''], 'ok: autostart: xxx\n', 1),
+    (frozenset({sys.platform}), ['no'], "next: run 'timesforge start' to start the Slack app\n", 0),
+    (frozenset[str](), [], "next: run 'timesforge start' to start the Slack app\n", 0)
 ]
 
 def prepare(
@@ -108,13 +116,14 @@ def answer(
     *,
     tokens: collections.abc.Sequence[str | Exception] = ('xoxb-xxx', 'xapp-xxx', ''),
     owners: collections.abc.Sequence[str | Exception] = ('UXXX2',),
-    channels: collections.abc.Sequence[str | Exception] = ('CXXX1',)
+    channels: collections.abc.Sequence[str | Exception] = ('CXXX1',),
+    starts: collections.abc.Sequence[str | Exception] = ('no',)
 ) -> unittest.mock.Mock:
 
     browse = unittest.mock.Mock()
 
     monkeypatch.setattr(getpass, 'getpass', unittest.mock.Mock(side_effect = tokens))
-    monkeypatch.setattr(builtins, 'input', unittest.mock.Mock(side_effect = [*owners, *channels]))
+    monkeypatch.setattr(builtins, 'input', unittest.mock.Mock(side_effect = [*owners, *channels, *starts]))
     monkeypatch.setattr(webbrowser, 'open', browse)
 
     return browse
@@ -614,3 +623,67 @@ class TestTerminalCommandSetup:
 
         assert captured.out.endswith(out.format(file = configuration))
         assert not captured.err
+
+    @pytest.mark.parametrize(('platforms', 'starts', 'out', 'registrations'), PLATFORMS_SETUP)
+    def test_autostart(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient,
+        platforms: frozenset[str],
+        starts: list[str],
+        out: str,
+        registrations: int
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        register = unittest.mock.Mock(return_value = 'xxx')
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(timesforge.autostart, 'register', register)
+        monkeypatch.setattr(timesforge.autostart, 'PLATFORMS', platforms)
+        answer(monkeypatch, starts = starts)
+
+        assert timesforge.terminal.main(['setup']) == 0
+        assert capsys.readouterr().out.endswith(out)
+        assert register.call_args_list == [unittest.mock.call(pathlib.Path(os.path.join(tmp_path, 'start.log')))] * registrations
+
+    def test_failure(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        workspace: dict[str, typing.Any],
+        slack: slack_sdk.web.WebClient
+    ) -> None:
+
+        def connect(
+            _: str
+        ) -> slack_sdk.web.WebClient:
+
+            return slack
+
+        register = unittest.mock.Mock()
+
+        workspace['channels'][0]['is_member'] = True
+
+        monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
+        monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
+        monkeypatch.setattr(timesforge.storage, 'Database', unittest.mock.Mock(side_effect = timesforge.storage.DatabaseError('xxx')))
+        monkeypatch.setattr(timesforge.autostart, 'register', register)
+        monkeypatch.setattr(timesforge.autostart, 'PLATFORMS', frozenset({sys.platform}))
+        answer(monkeypatch, starts = [''])
+
+        assert timesforge.terminal.main(['setup']) == 1
+        assert capsys.readouterr().err == 'error: xxx\n'
+        assert not register.called
