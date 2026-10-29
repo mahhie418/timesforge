@@ -140,7 +140,7 @@ def _doctor(
         settings = timesforge.configuration.load()
         settings.require('slack_bot_token', 'slack_app_token', 'timesforge_owner_id', 'timesforge_channel_id_welcome')
 
-        print('ok: settings')
+        print(f'ok: settings ({timesforge.configuration.locate()})')
 
         client = timesforge.slack.api.connect(settings.slack_bot_token)
 

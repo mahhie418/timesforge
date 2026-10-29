@@ -29,15 +29,10 @@ ENVIRONMENT_INVALID = [
 
 @pytest.fixture
 def isolated(
-    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch
-) -> pathlib.Path:
-
-    monkeypatch.chdir(tmp_path)
+) -> None:
 
     for name in [name for name in os.environ if name.startswith(PREFIXES)]: monkeypatch.delenv(name)
-
-    return tmp_path
 
 def test_configuration_values_default() -> None:
 
@@ -108,24 +103,40 @@ def test_configuration_directory_relative(
 
     assert settings.timesforge_data_directory == expected
 
-def test_configuration_dotenv_reading(
-    isolated: pathlib.Path
-) -> None:
-
-    file = pathlib.Path(os.path.join(isolated, '.env'))
-    file.write_text('TIMESFORGE_LANGUAGE_DISPLAY=ja\n', encoding = 'utf-8')
-
-    settings = timesforge.configuration.load()
-
-    assert settings.timesforge_language_display == 'ja'
-
-def test_configuration_dotenv_override(
-    isolated: pathlib.Path,
+def test_configuration_file_location(
     monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
-    file = pathlib.Path(os.path.join(isolated, '.env'))
-    file.write_text('TIMESFORGE_LANGUAGE_DISPLAY=xxx\n', encoding = 'utf-8')
+    monkeypatch.undo()
+    expected = pathlib.Path(os.path.join(platformdirs.user_config_path(timesforge.product.NAME, appauthor = False), 'timesforge.env'))
+
+    assert timesforge.configuration.locate() == expected
+
+@pytest.mark.usefixtures('isolated')
+def test_configuration_file_reading(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    configuration: pathlib.Path
+) -> None:
+
+    configuration.parent.mkdir()
+    configuration.write_text('TIMESFORGE_LANGUAGE_DISPLAY=ja\n', encoding = 'utf-8')
+    pathlib.Path(os.path.join(tmp_path, '.env')).write_text('TIMESFORGE_OWNER_ID=UXXX\n', encoding = 'utf-8')
+
+    monkeypatch.chdir(tmp_path)
+    settings = timesforge.configuration.load()
+
+    assert settings.timesforge_language_display == 'ja'
+    assert not settings.timesforge_owner_id
+
+@pytest.mark.usefixtures('isolated')
+def test_configuration_file_override(
+    monkeypatch: pytest.MonkeyPatch,
+    configuration: pathlib.Path
+) -> None:
+
+    configuration.parent.mkdir()
+    configuration.write_text('TIMESFORGE_LANGUAGE_DISPLAY=xxx\n', encoding = 'utf-8')
 
     monkeypatch.setenv('TIMESFORGE_LANGUAGE_DISPLAY', 'ja')
     settings = timesforge.configuration.load()
@@ -133,7 +144,7 @@ def test_configuration_dotenv_override(
     assert settings.timesforge_language_display == 'ja'
 
 @pytest.mark.usefixtures('isolated')
-def test_configuration_dotenv_missing(
+def test_configuration_file_missing(
     monkeypatch: pytest.MonkeyPatch
 ) -> None:
 

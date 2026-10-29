@@ -27,12 +27,12 @@ ENVIRONMENTS_START = [
 ENVIRONMENT_DOCTOR = {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}
 
 CHECKS_DOCTOR = [
-    ({}, 'UXXX2', 0, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
-    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
+    ({}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
+    ({'SLACK_USER_TOKEN': ''}, 'UXXX2', 0, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: database\nok: owner: UXXX1\nok: welcome channel: #times_xxx\n', ''),
     ({'SLACK_APP_TOKEN': ''}, 'UXXX2', 1, '', 'error: Missing required environment variables: SLACK_APP_TOKEN\n'),
-    ({}, 'UXXX1', 1, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\n', 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'),
-    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\n', 'error: TIMESFORGE_OWNER_ID must be a member of the workspace\n'),
-    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, 'ok: settings\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\n', 'error: The bot must be in #xxx to welcome new members\n')
+    ({}, 'UXXX1', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\n', 'error: SLACK_USER_TOKEN must belong to an admin of the workspace\n'),
+    ({'TIMESFORGE_OWNER_ID': 'UXXX5'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\n', 'error: TIMESFORGE_OWNER_ID must be a member of the workspace\n'),
+    ({'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX2'}, 'UXXX2', 1, 'ok: settings ({file})\nok: Slack: https://xxx.slack.com/\nok: app-level token\nok: user token: UXXX2\nok: database\nok: owner: UXXX1\n', 'error: The bot must be in #xxx to welcome new members\n')
 ]
 
 def prepare(
@@ -51,7 +51,6 @@ def prepare(
     file = pathlib.Path(os.path.join(tmp_path, 'mapping.json'))
     file.write_text(json.dumps(mapping), encoding = 'utf-8')
 
-    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
     monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
     monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
@@ -210,7 +209,6 @@ class TestTerminalCommandStart:
 
             raise KeyboardInterrupt
 
-        monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
@@ -237,7 +235,6 @@ class TestTerminalCommandStart:
 
             return slack
 
-        monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-xxx')
         monkeypatch.setenv('SLACK_APP_TOKEN', 'xapp-xxx')
         monkeypatch.setenv('TIMESFORGE_OWNER_ID', 'UXXX1')
@@ -278,6 +275,7 @@ class TestTerminalCommandDoctor:
         workspace: dict[str, typing.Any],
         slack: slack_sdk.web.WebClient,
         writer: slack_sdk.web.WebClient,
+        configuration: pathlib.Path,
         environment: dict[str, str],
         identity: str,
         status: int,
@@ -293,7 +291,6 @@ class TestTerminalCommandDoctor:
 
         workspace['channels'][0]['is_member'] = True
 
-        monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(writer, 'auth_test', unittest.mock.Mock(return_value = {'user_id': identity}))
@@ -301,4 +298,4 @@ class TestTerminalCommandDoctor:
         for name, value in (ENVIRONMENT_DOCTOR | environment).items(): monkeypatch.setenv(name, value)
 
         assert timesforge.terminal.main(['doctor']) == status
-        assert capsys.readouterr() == (out, err)
+        assert capsys.readouterr() == (out.format(file = configuration), err)
