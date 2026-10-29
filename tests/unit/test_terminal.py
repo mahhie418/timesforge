@@ -83,10 +83,11 @@ CHANNELS_IMPORTED = [
 ]
 
 PLATFORMS_SETUP = [
-    (frozenset({sys.platform}), [''], '[OK] autostart: xxx\n\n', 1),
-    (frozenset({sys.platform}), ['yes'], '[OK] autostart: xxx\n\n', 1),
-    (frozenset({sys.platform}), ['no'], "[NEXT] run 'timesforge start' to start the Slack app\n\n", 0),
-    (frozenset[str](), [], "[NEXT] run 'timesforge start' to start the Slack app\n\n", 0)
+    (frozenset({sys.platform}), [''], None, '[OK] autostart: xxx\n\n', 1, 0),
+    (frozenset({sys.platform}), ['yes'], None, '[OK] autostart: xxx\n\n', 1, 0),
+    (frozenset({sys.platform}), ['no'], None, "\n[NEXT] run 'timesforge start' to start the Slack app\n\n", 0, 1),
+    (frozenset({sys.platform}), ['no'], 'xxx', "\n[OK] autostart: removed xxx\n[NEXT] run 'timesforge start' to start the Slack app\n\n", 0, 1),
+    (frozenset[str](), [], None, "\n[NEXT] run 'timesforge start' to start the Slack app\n\n", 0, 0)
 ]
 
 LAYOUT_SETUP = """
@@ -187,6 +188,7 @@ def answer(
     monkeypatch.setattr(getpass, 'getpass', unittest.mock.Mock(side_effect = tokens))
     monkeypatch.setattr(builtins, 'input', unittest.mock.Mock(side_effect = [*owners, *channels, *starts]))
     monkeypatch.setattr(webbrowser, 'open', browse)
+    monkeypatch.setattr(timesforge.autostart, 'unregister', unittest.mock.Mock(return_value = None))
 
     return browse
 
@@ -773,7 +775,7 @@ class TestTerminalCommandSetup:
         assert out.format(file = configuration) in captured.out
         assert not captured.err
 
-    @pytest.mark.parametrize(('platforms', 'starts', 'out', 'registrations'), PLATFORMS_SETUP)
+    @pytest.mark.parametrize(('platforms', 'starts', 'registration', 'out', 'registrations', 'removals'), PLATFORMS_SETUP)
     def test_autostart(
         self,
         tmp_path: pathlib.Path,
@@ -783,8 +785,10 @@ class TestTerminalCommandSetup:
         slack: slack_sdk.web.WebClient,
         platforms: frozenset[str],
         starts: list[str],
+        registration: str | None,
         out: str,
-        registrations: int
+        registrations: int,
+        removals: int
     ) -> None:
 
         def connect(
@@ -794,18 +798,22 @@ class TestTerminalCommandSetup:
             return slack
 
         register = unittest.mock.Mock(return_value = 'xxx')
+        unregister = unittest.mock.Mock(return_value = registration)
+        log = pathlib.Path(os.path.join(tmp_path, 'start.log'))
 
         workspace['channels'][0]['is_member'] = True
 
         monkeypatch.setenv('TIMESFORGE_DATA_DIRECTORY', str(tmp_path))
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
-        monkeypatch.setattr(timesforge.autostart, 'register', register)
-        monkeypatch.setattr(timesforge.autostart, 'PLATFORMS', platforms)
         answer(monkeypatch, starts = starts)
+        monkeypatch.setattr(timesforge.autostart, 'register', register)
+        monkeypatch.setattr(timesforge.autostart, 'unregister', unregister)
+        monkeypatch.setattr(timesforge.autostart, 'PLATFORMS', platforms)
 
         assert timesforge.terminal.main(['setup']) == 0
         assert capsys.readouterr().out.endswith(out)
-        assert register.call_args_list == [unittest.mock.call(pathlib.Path(os.path.join(tmp_path, 'start.log')))] * registrations
+        assert register.call_args_list == [unittest.mock.call(log)] * registrations
+        assert unregister.call_args_list == [unittest.mock.call(log)] * removals
 
     def test_failure(
         self,
@@ -926,6 +934,7 @@ class TestTerminalCommandSetup:
         monkeypatch.setattr(timesforge.slack.api, 'connect', connect)
         monkeypatch.setattr(getpass, 'getpass', enter)
         monkeypatch.setattr(builtins, 'input', enter)
+        monkeypatch.setattr(timesforge.autostart, 'unregister', unittest.mock.Mock(return_value = None))
         monkeypatch.setattr(timesforge.autostart, 'PLATFORMS', frozenset({sys.platform}))
 
         assert timesforge.terminal.main(['setup']) == 0

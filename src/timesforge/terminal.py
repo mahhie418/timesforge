@@ -405,13 +405,17 @@ def _autostart() -> None:
 
     if sys.platform in timesforge.autostart.PLATFORMS: print()
 
+    log = pathlib.Path(os.path.join(timesforge.configuration.load().timesforge_data_directory, 'start.log'))
+
     if sys.platform not in timesforge.autostart.PLATFORMS or not _agree('Start the Slack app automatically when you log in?', default = True):
 
-        _report('NEXT', f"run '{timesforge.product.COMMAND} start' to start the Slack app", blank = True)
+        registration = timesforge.autostart.unregister(log) if sys.platform in timesforge.autostart.PLATFORMS else None
+
+        if registration: _report('OK', f'autostart: removed {registration}', blank = True)
+
+        _report('NEXT', f"run '{timesforge.product.COMMAND} start' to start the Slack app", blank = not registration)
 
         return
-
-    log = pathlib.Path(os.path.join(timesforge.configuration.load().timesforge_data_directory, 'start.log'))
 
     _report('OK', f'autostart: {timesforge.autostart.register(log)}', blank = True)
 
