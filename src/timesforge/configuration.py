@@ -1,4 +1,4 @@
-"""Configuration read from environment variables and an optional .env file."""
+"""Configuration read from environment variables and the settings file of the user, which setup writes."""
 
 import collections.abc
 import dataclasses
@@ -14,6 +14,8 @@ import timesforge.product
 
 type Language = typing.Literal['en', 'ja']
 type FieldRequired = typing.Literal['slack_bot_token', 'slack_app_token', 'slack_user_token', 'timesforge_owner_id', 'timesforge_channel_id_welcome']
+
+SETTINGS_FILE = 'timesforge.env'
 
 _PATTERN_SLACK_USER_ID = re.compile(r'[UW][A-Z0-9]{2,}')
 _PATTERN_SLACK_CHANNEL_ID = re.compile(r'C[A-Z0-9]{2,}')
@@ -80,7 +82,7 @@ def load(
     Args:
         environment: Environment variables to build the settings from.
                      When None, the process environment is used, layered over
-                     a .env file in the current directory if there is one.
+                     the settings file if there is one.
 
     Returns:
         The validated settings.
@@ -109,9 +111,35 @@ def load(
         timesforge_language_display = _parse('TIMESFORGE_LANGUAGE_DISPLAY', environment, category = 'language')
     )
 
+def save(
+    values: collections.abc.Mapping[str, str]
+) -> None:
+
+    """Writes values into the settings file, keeping its other lines.
+
+    The file and its directory are created when missing, and only the user
+    may read the file on POSIX systems, because it holds credentials.
+
+    Args:
+        values: Values by environment variable name.
+    """
+
+    file = locate()
+    file.parent.mkdir(mode = 0o700, parents = True, exist_ok = True)
+
+    for name, value in values.items(): dotenv.set_key(file, name, value, quote_mode = 'never')
+
+    file.chmod(0o600)
+
+def locate() -> pathlib.Path:
+
+    """Returns the path of the settings file in the configuration directory of the user."""
+
+    return pathlib.Path(os.path.join(platformdirs.user_config_path(timesforge.product.NAME, appauthor = False), SETTINGS_FILE))
+
 def _read() -> dict[str, str]:
 
-    values = {key: value for key, value in dotenv.dotenv_values('.env').items() if value is not None}
+    values = {key: value for key, value in dotenv.dotenv_values(locate()).items() if value is not None}
 
     return {**values, **os.environ}
 

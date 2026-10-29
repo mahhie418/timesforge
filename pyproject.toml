@@ -10,6 +10,7 @@ requires-python = ">=3.14"
 dependencies = [
     "platformdirs>=4.13.5",
     "python-dotenv>=1.2.4",
+    "rich>=15.0.0",
     "slack-bolt>=1.30.0",
     "slack-sdk>=3.45.0",
 ]
@@ -40,12 +41,15 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/timesforge/autostart.py" = [
+    "S603"
+]
 "src/timesforge/terminal.py" = [
     "T201"
 ]
 "tests/**" = [
     "D",
-    "PLR2004", "S101", "S106"
+    "PLR2004", "S101", "S105", "S106"
 ]
 
 [tool.ruff.lint.flake8-quotes]

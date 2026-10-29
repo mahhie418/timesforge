@@ -7,6 +7,7 @@ import typing
 import pytest
 import slack_sdk
 
+import timesforge.configuration
 import timesforge.storage
 
 class Slack(slack_sdk.web.WebClient):
@@ -148,6 +149,17 @@ def writer(
 ) -> Slack:
 
     return Slack(workspace, 'UXXX0')
+
+@pytest.fixture(autouse = True)
+def configuration(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> pathlib.Path:
+
+    file = pathlib.Path(os.path.join(tmp_path, 'configuration', timesforge.configuration.SETTINGS_FILE))
+    monkeypatch.setattr(timesforge.configuration, 'locate', lambda: file)
+
+    return file
 
 def page(
     key: str,
