@@ -39,6 +39,11 @@ ENVIRONMENTS_START = [
     ({'SLACK_APP_TOKEN': '', 'TIMESFORGE_OWNER_ID': '', 'TIMESFORGE_CHANNEL_ID_WELCOME': ''}, 1, '[ERROR] Missing required environment variables: SLACK_APP_TOKEN, TIMESFORGE_OWNER_ID, TIMESFORGE_CHANNEL_ID_WELCOME\n', [], [])
 ]
 
+REGISTRATIONS_STOP = [
+    ('xxx', '[OK] autostart: removed xxx\n'),
+    (None, '[OK] autostart: not registered\n')
+]
+
 ENVIRONMENT_DOCTOR = {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': 'xoxp-xxx', 'TIMESFORGE_OWNER_ID': 'UXXX1', 'TIMESFORGE_CHANNEL_ID_WELCOME': 'CXXX1'}
 
 CHECKS_DOCTOR = [
@@ -410,6 +415,33 @@ class TestTerminalCommandStart:
         assert timesforge.terminal.main(['start', '--log', str(log)]) == 0
         assert capsys.readouterr() == ('', '')
         assert log.read_text(encoding = 'utf-8') == '[ERROR] Missing required environment variables: SLACK_APP_TOKEN\nxapp-xxx\n'
+
+class TestTerminalCommandStop:
+
+    @pytest.mark.parametrize(('registration', 'out'), REGISTRATIONS_STOP)
+    def test_registration(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        registration: str | None,
+        out: str
+    ) -> None:
+
+        monkeypatch.setattr(timesforge.autostart, 'unregister', unittest.mock.Mock(return_value = registration))
+
+        assert timesforge.terminal.main(['stop']) == 0
+        assert capsys.readouterr() == (out, '')
+
+    def test_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]
+    ) -> None:
+
+        monkeypatch.setattr(timesforge.autostart, 'unregister', unittest.mock.Mock(side_effect = timesforge.autostart.AutostartError('xxx')))
+
+        assert timesforge.terminal.main(['stop']) == 1
+        assert capsys.readouterr() == ('', '[ERROR] xxx\n')
 
 class TestTerminalCommandManifest:
 
