@@ -1,4 +1,4 @@
-"""Times channels that members created by hand before timesforge, with the holders whom the owner confirmed."""
+"""Times channels that members created by hand before TimesForge, with the holders whom the owner confirmed."""
 
 import collections
 import collections.abc
@@ -35,7 +35,7 @@ class Finding:
     Attributes:
         channel_id: Slack channel ID.
         holder_id: Slack user ID of the holder.
-        verdict: import when the channel can be imported, skip when timesforge has it with the same holder, or error when it cannot be imported.
+        verdict: import when the channel can be imported, skip when TimesForge has it with the same holder, or error when it cannot be imported.
         reason: Why the channel is skipped or cannot be imported, as a Slack error code or one of registered, private, name, holder, held and duplicate; None when it can be imported.
         channel: The channel to register, or None when it is not imported.
     """
@@ -85,7 +85,7 @@ def check(
     Slack must have each channel as a public channel named after a first name,
     and its holder must be a member who is invited to times channels. The
     holder of a channel is whom the mapping names, whoever Slack records as
-    its creator. timesforge must not have the channel with another holder,
+    its creator. TimesForge must not have the channel with another holder,
     nor the holder with another times channel that is not deleted, and the
     mapping must not name a holder twice.
 

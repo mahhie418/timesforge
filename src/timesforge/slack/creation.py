@@ -1,4 +1,4 @@
-"""Creation of public times channels in Slack for the requests that timesforge reserved."""
+"""Creation of public times channels in Slack for the requests that TimesForge reserved."""
 
 import datetime
 import typing

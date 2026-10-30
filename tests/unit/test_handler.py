@@ -13,7 +13,6 @@ import slack_sdk.errors
 
 import timesforge.configuration
 import timesforge.localisation
-import timesforge.product
 import timesforge.slack.handler
 import timesforge.slack.permission
 import timesforge.slack.reconciliation
@@ -234,7 +233,7 @@ def test_handler_home_prompt(
 
     for _ in range(2): home(application, 'UXXX2', 'home')
 
-    assert [arguments['view']['blocks'][0]['text']['text'] for arguments in calls(workspace, 'views.publish')] == [timesforge.localisation.translate('home.prompt', 'ja', product = timesforge.product.NAME)] * 2
+    assert [arguments['view']['blocks'][0]['text']['text'] for arguments in calls(workspace, 'views.publish')] == [timesforge.localisation.translate('home.prompt', 'ja')] * 2
 
 @pytest.mark.parametrize(('tab', 'count'), TABS_OPENED)
 def test_handler_home_tab(

@@ -64,8 +64,8 @@
   "home.history.text": "The latest changes to the times channels and to who may create them.",
   "home.imports": "Imported channels",
   "home.imports.action": "Review",
-  "home.imports.text": "Check who holds the times channels created before timesforge, and correct them.",
-  "home.prompt": "A times channel is your own public channel, `#times_(First Name)`, where you post whatever you like. Enter your first name, and {product} creates the channel and invites the members of the workspace. Each member can normally create one times channel, once.",
+  "home.imports.text": "Check who holds the times channels created before TimesForge, and correct them.",
+  "home.prompt": "A times channel is your own public channel, `#times_(First Name)`, where you post whatever you like. Enter your first name, and TimesForge creates the channel and invites the members of the workspace. Each member can normally create one times channel, once.",
   "home.recreations": "Recreation grants",
   "home.recreations.action": "Change grants",
   "home.recreations.none": "None",
@@ -118,6 +118,6 @@
   "review.submit": "Change holder",
   "review.title": "Imported channels",
   "welcome.action": "Create your times",
-  "welcome.body": "You can create your own public channel, `#times_(First Name)`.\nEnter your first name, and {product} will automatically create your channel and invite eligible workspace members.\nEach member can normally create one times channel.",
+  "welcome.body": "You can create your own public channel, `#times_(First Name)`.\nEnter your first name, and TimesForge will automatically create your channel and invite eligible workspace members.\nEach member can normally create one times channel.",
   "welcome.title": "Welcome to {workspace}!"
 }

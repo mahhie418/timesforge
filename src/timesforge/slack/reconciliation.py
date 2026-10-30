@@ -1,4 +1,4 @@
-"""Reconciliation of the times channels that timesforge knows with their state in Slack."""
+"""Reconciliation of the times channels that TimesForge knows with their state in Slack."""
 
 import collections.abc
 import datetime

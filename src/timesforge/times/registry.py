@@ -1,4 +1,4 @@
-"""Times channels that timesforge knows, with the members who hold them."""
+"""Times channels that TimesForge knows, with the members who hold them."""
 
 import dataclasses
 import datetime
@@ -35,7 +35,7 @@ class Channel:
         holder_id: Slack user ID of the member who holds the channel: the member who asked for it, whoever Slack records as its creator.
         first_name: First name that the holder entered.
         channel_name: Name of the channel, which follows renames in Slack.
-        source: Whether timesforge created the channel, or imported one that the holder had created by hand.
+        source: Whether TimesForge created the channel, or imported one that the holder had created by hand.
         status: Whether the channel is in use (active), archived, or deleted in Slack.
         creation: When the channel was created.
         archival: When the channel was archived, or None while it is not archived.

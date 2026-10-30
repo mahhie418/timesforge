@@ -61,7 +61,7 @@ TOKENS_SETUP = [
     (['xoxb-xxx', 'xapp-xxx', 'xoxb-xxx', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, '[OK] Slack: https://xxx.slack.com/\n', '\n[ERROR] SLACK_USER_TOKEN must be a user token starting with xoxp-\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
     (['', '', '', 'xoxb-xxx', 'xapp-xxx', ''], '', 0, '[OK] Slack: https://xxx.slack.com/\n', '\n[ERROR] Missing required environment variables: SLACK_BOT_TOKEN, SLACK_APP_TOKEN\n', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
     (['', '', ''], 'SLACK_BOT_TOKEN=xoxb-xxx\nSLACK_APP_TOKEN=xapp-xxx\n', 0, '[OK] Slack: https://xxx.slack.com/\n', '', {'SLACK_BOT_TOKEN': 'xoxb-xxx', 'SLACK_APP_TOKEN': 'xapp-xxx', 'SLACK_USER_TOKEN': ''}),
-    ([EOFError()], '', 1, '', '\n[ERROR] Setup was stopped\n', {})
+    ([EOFError()], '', 1, '', '\n\n[ERROR] Setup was stopped\n', {})
 ]
 
 OWNERS_SETUP = [
@@ -91,7 +91,7 @@ PLATFORMS_SETUP = [
 ]
 
 LAYOUT_SETUP = """
-timesforge (Version: {version})
+TimesForge (Version: {version})
 
 Open the link below to create the Slack app. Its settings are filled in from the manifest.
 
@@ -110,7 +110,7 @@ User OAuth Token:
 
 [OK] Slack: https://xxx.slack.com/
 
-Choose who owns timesforge in Slack, and copy their member ID.
+Choose who owns TimesForge in Slack, and copy their member ID.
 
 1. In Slack, open their profile.
 2. Choose ⋮ (More), then Copy member ID.
@@ -123,11 +123,9 @@ Choose the channel that new members join, such as #welcome, and copy its channel
 
 1. In Slack, open the channel and choose its name at the top.
 2. At the bottom of About, copy the channel ID.
-3. In the channel, send /invite @timesforge so that the bot joins it.
+3. In the channel, send /invite @TimesForge so that the bot joins it.
 
 Channel ID of the welcome channel:
-
-[OK] welcome channel: #times_xxx
 
 [OK] settings ({file})
 [OK] Slack: https://xxx.slack.com/
