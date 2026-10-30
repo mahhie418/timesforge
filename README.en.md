@@ -139,3 +139,7 @@ To uninstall TimesForge, stop the Slack app and its start at login with `timesfo
 - On the Free plan, Slack shows only the last 90 days of messages, so an old welcome message may no longer show. App Home always shows whether a member can create a times channel.
 - The settings file holds the Slack tokens, and on macOS and Linux only you can read it.
 - The database in the data folder is the only record of who holds which times channel and who may create one. Back it up, as [Running TimesForge in a workspace](https://github.com/mahhie418/timesforge/blob/main/docs/deployment.md) explains, which also covers welcome messages and recovering from failures.
+
+## Licence
+
+TimesForge is released under the MIT License. See [LICENSE](https://github.com/mahhie418/timesforge/blob/main/LICENSE).

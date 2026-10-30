@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Times channels that members created by hand before TimesForge, with the holders whom the owner confirmed."""
 
 import collections

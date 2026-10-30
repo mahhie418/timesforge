@@ -139,3 +139,7 @@ TimesForge をアンインストールするには、`timesforge stop` で Slack
 - フリープランでは、Slack は直近 90 日のメッセージしか表示しないので、古い歓迎のメッセージは見えなくなることがあります。times チャンネルを作成できるかどうかは、App Home にいつでも表示されます。
 - 設定ファイルには Slack のトークンが含まれます。macOS と Linux では、本人だけが読めるように保存します。
 - 誰がどの times チャンネルを持ち、誰が作成できるかの記録は、データフォルダのデータベースにしかありません。バックアップしてください。バックアップの方法は、歓迎のメッセージや障害からの復旧とあわせて [Running TimesForge in a workspace](https://github.com/mahhie418/timesforge/blob/main/docs/deployment.md) にあります (英語)。
+
+## ライセンス
+
+TimesForge は MIT License で公開しています。詳しくは [LICENSE](https://github.com/mahhie418/timesforge/blob/main/LICENSE) を参照してください。

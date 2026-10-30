@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Messages that welcome new members and tell them how to create their times channels."""
 
 import collections.abc

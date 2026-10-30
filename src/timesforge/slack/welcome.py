@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Welcome messages that the bot sends new members by direct message, once each."""
 
 import datetime
