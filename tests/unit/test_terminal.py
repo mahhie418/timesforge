@@ -464,6 +464,8 @@ class TestTerminalCommandManifest:
         assert manifest['oauth_config']['scopes']['bot'] == ['channels:manage', 'channels:read', 'chat:write', 'im:history', 'im:write', 'users:read']
         assert manifest['oauth_config']['scopes']['user'] == ['channels:write']
         assert manifest['features']['app_home']['home_tab_enabled']
+        assert manifest['features']['app_home']['messages_tab_enabled']
+        assert manifest['features']['app_home']['messages_tab_read_only_enabled']
         assert manifest['settings']['event_subscriptions']['bot_events'] == ['app_home_opened', 'channel_archive', 'channel_deleted', 'channel_rename', 'channel_unarchive', 'member_joined_channel']
         assert manifest['settings']['interactivity']['is_enabled']
         assert manifest['settings']['socket_mode_enabled']
