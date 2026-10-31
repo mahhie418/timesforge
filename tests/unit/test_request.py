@@ -1,0 +1,244 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
+import datetime
+import threading
+
+import pytest
+
+import timesforge.storage
+import timesforge.times.exclusion
+import timesforge.times.history
+import timesforge.times.naming
+import timesforge.times.recreation
+import timesforge.times.registry
+import timesforge.times.request
+
+CREATION = datetime.datetime(2026, 10, 25, 15, 0, tzinfo = datetime.UTC)
+CHANGE = CREATION + datetime.timedelta(days = 1)
+
+REFUSALS = [('UXXX1', 'holder'), ('UXXX2', 'used'), ('UXXX3', 'excluded')]
+REQUESTS_COUNT = 'SELECT count(*) FROM request'
+
+def register(
+    database: timesforge.storage.Database,
+    channel_id: str,
+    holder_id: str
+) -> timesforge.times.registry.RegistryIO:
+
+    store = timesforge.times.registry.RegistryIO(database)
+    channel = timesforge.times.registry.Channel(channel_id = channel_id, holder_id = holder_id, first_name = 'Xxx', channel_name = 'times_xxx', creation = CREATION)
+
+    store.save('TXXX', channel)
+
+    return store
+
+def run(
+    targets: list[tuple[str, str]],
+    store: timesforge.times.request.RequestIO
+) -> list[timesforge.times.request.Request]:
+
+    requests = []
+    barrier = threading.Barrier(len(targets))
+
+    def reserve(
+        user_id: str,
+        first_name: str
+    ) -> None:
+
+        barrier.wait()
+        requests.append(store.reserve('TXXX', user_id, first_name, CREATION))
+
+    threads = [threading.Thread(target = reserve, args = target) for target in targets]
+
+    for thread in threads: thread.start()
+    for thread in threads: thread.join()
+
+    return requests
+
+def test_request_channel_reservation(
+    database: timesforge.storage.Database
+) -> None:
+
+    request = timesforge.times.request.RequestIO(database).reserve('TXXX', 'UXXX1', ' Xxx ', CREATION)
+
+    assert request == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'reserved', grant_id = None, creation = CREATION)
+
+def test_request_member_history(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.request.RequestIO(database)
+
+    failure = store.reserve('TXXX', 'UXXX1', 'Xxx', CREATION)
+    store.start('TXXX', failure.request_id, CREATION); store.fail('TXXX', failure.request_id, error = 'xxx', now = CREATION)
+
+    retry = store.reserve('TXXX', 'UXXX1', 'Yyy', CHANGE)
+    store.reserve('TYYY', 'UXXX1', 'Xxx', CHANGE)
+
+    assert [request.request_id for request in store.find('TXXX', 'UXXX1')] == [failure.request_id, retry.request_id]
+    assert store.find('TXXX', 'UXXX2') == []
+
+def test_request_workspace_scan(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1')
+
+    store = timesforge.times.request.RequestIO(database)
+
+    request = store.reserve('TXXX', 'UXXX2', 'Yyy', CREATION)
+    store.reserve('TXXX', 'UXXX3', 'Xxx', CREATION)
+
+    failure = store.reserve('TXXX', 'UXXX4', 'Zzz', CREATION)
+    store.start('TXXX', failure.request_id, CREATION); store.fail('TXXX', failure.request_id, error = 'xxx', now = CREATION)
+    store.reserve('TYYY', 'UXXX5', 'Yyy', CREATION)
+
+    assert store.scan('TXXX', ['reserved', 'creating']) == [request]
+    assert [item.user_id for item in store.scan('TXXX', ['pending_name_resolution', 'failed'])] == ['UXXX3', 'UXXX4']
+
+def test_request_channel_repetition(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.request.RequestIO(database)
+
+    request = store.reserve('TXXX', 'UXXX1', 'Xxx', CREATION)
+
+    assert store.reserve('TXXX', 'UXXX1', 'Yyy', CHANGE) == request
+    assert store.reserve('TYYY', 'UXXX1', 'Yyy', CHANGE) != request
+    assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 2
+
+def test_request_channel_concurrency(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.request.RequestIO(database)
+
+    requests = run([('UXXX1', 'Xxx')] * 8, store)
+
+    assert len(requests) == 8
+    assert {request.request_id for request in requests} == {requests[0].request_id}
+
+    requests = run([('UXXX2', 'Yyy'), ('UXXX3', 'Yyy')], store)
+
+    assert sorted(request.status for request in requests) == ['pending_name_resolution', 'reserved']
+    assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 3
+
+def test_request_name_conflict(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1')
+    register(database, 'CXXX2', 'UXXX2').delete('TXXX', 'CXXX2', CREATION)
+
+    store = timesforge.times.request.RequestIO(database)
+
+    assert store.reserve('TXXX', 'UXXX3', 'Xxx', CREATION).status == 'pending_name_resolution'
+    assert store.reserve('TYYY', 'UXXX3', 'Xxx', CREATION).status == 'reserved'
+
+    timesforge.times.registry.RegistryIO(database).archive('TXXX', 'CXXX1', CREATION)
+
+    assert store.reserve('TXXX', 'UXXX4', 'Yyy', CREATION).status == 'reserved'
+    assert store.reserve('TXXX', 'UXXX5', 'Yyy', CREATION).status == 'pending_name_resolution'
+
+@pytest.mark.parametrize(('user_id', 'expected'), REFUSALS)
+def test_request_member_refusal(
+    database: timesforge.storage.Database,
+    user_id: str,
+    expected: str
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1')
+    register(database, 'CXXX2', 'UXXX2').delete('TXXX', 'CXXX2', CREATION)
+
+    timesforge.times.exclusion.ExclusionIO(database).add('TXXX', timesforge.times.exclusion.Exclusion(user_id = 'UXXX3', reason = 'xxx', owner_id = 'UXXX0', creation = CREATION))
+
+    with pytest.raises(timesforge.times.request.RequestRefusedError) as exception: timesforge.times.request.RequestIO(database).reserve('TXXX', user_id, 'Yyy', CREATION)
+
+    assert exception.value.refusal == expected
+    assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 0
+
+def test_request_grant_reservation(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1').delete('TXXX', 'CXXX1', CREATION)
+
+    grants = timesforge.times.recreation.RecreationIO(database)
+    grant = grants.grant('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
+
+    request = timesforge.times.request.RequestIO(database).reserve('TXXX', 'UXXX1', 'Yyy', CHANGE)
+
+    assert request.grant_id == grant.grant_id
+    assert [(item.status, item.reservation) for item in grants.find('TXXX', 'UXXX1')] == [('reserved', CHANGE)]
+
+    with pytest.raises(timesforge.times.recreation.GrantInvalidError) as exception: grants.grant('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CHANGE)
+
+    assert exception.value.reason == 'grant'
+    assert grants.consume('TXXX', 'UXXX1', 'CXXX2', CHANGE)
+
+def test_request_name_invalid(
+    database: timesforge.storage.Database
+) -> None:
+
+    with pytest.raises(timesforge.times.naming.NameInvalidError): timesforge.times.request.RequestIO(database).reserve('TXXX', 'UXXX1', 'xxx yyy', CREATION)
+
+    assert database.connect().execute(REQUESTS_COUNT).fetchone()[0] == 0
+
+def test_request_name_resolution(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1')
+
+    store = timesforge.times.request.RequestIO(database)
+    request = store.reserve('TXXX', 'UXXX2', 'Xxx', CREATION)
+
+    with pytest.raises(timesforge.times.request.NameTakenError): store.resolve('TXXX', request.request_id, ' Xxx ', owner_id = 'UXXX0', now = CHANGE)
+    with pytest.raises(timesforge.times.naming.NameInvalidError): store.resolve('TXXX', request.request_id, 'xxx yyy', owner_id = 'UXXX0', now = CHANGE)
+
+    assert store.resolve('TXXX', request.request_id, 'Xxx-Yyy', owner_id = 'UXXX0', now = CHANGE) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX2', first_name = 'Xxx', channel_name = 'times_xxx-yyy', status = 'reserved', grant_id = None, creation = CREATION)
+    assert store.resolve('TXXX', request.request_id, 'Zzz', owner_id = 'UXXX0', now = CHANGE) is None
+    assert timesforge.times.history.HistoryIO(database).load('TXXX', 1) == [timesforge.times.history.Entry(action = 'resolve', actor_id = 'UXXX0', target_id = 'UXXX2', details = {'channel_name': 'times_xxx-yyy'}, creation = CHANGE)]
+
+def test_request_member_withdrawal(
+    database: timesforge.storage.Database
+) -> None:
+
+    register(database, 'CXXX1', 'UXXX1').delete('TXXX', 'CXXX1', CREATION)
+
+    grants = timesforge.times.recreation.RecreationIO(database)
+    grants.grant('TXXX', 'UXXX1', owner_id = 'UXXX0', now = CREATION)
+
+    store = timesforge.times.request.RequestIO(database)
+    request = store.reserve('TXXX', 'UXXX1', 'Xxx', CHANGE)
+
+    assert store.withdraw('TXXX', 'UXXX1', error = 'excluded', now = CHANGE)
+    assert not store.withdraw('TXXX', 'UXXX1', error = 'excluded', now = CHANGE)
+    assert store.load('TXXX', request.request_id) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'failed', grant_id = request.grant_id, error = 'excluded', creation = CHANGE)
+    assert [grant.status for grant in grants.find('TXXX', 'UXXX1')] == ['unused']
+
+    store.start('TXXX', store.reserve('TXXX', 'UXXX1', 'Xxx', CHANGE).request_id, CHANGE)
+
+    assert not store.withdraw('TXXX', 'UXXX1', error = 'excluded', now = CHANGE)
+
+def test_request_status_transition(
+    database: timesforge.storage.Database
+) -> None:
+
+    store = timesforge.times.request.RequestIO(database)
+
+    request = store.reserve('TXXX', 'UXXX1', 'Xxx', CREATION)
+
+    assert not store.retry('TXXX', request.request_id, CHANGE)
+    assert not store.lose('TXXX', request.request_id, error = 'xxx', now = CHANGE)
+    assert store.start('TXXX', request.request_id, CHANGE)
+    assert not store.start('TXXX', request.request_id, CHANGE)
+    assert store.lose('TXXX', request.request_id, error = 'xxx', now = CHANGE)
+    assert not store.postpone('TXXX', request.request_id, CHANGE)
+    assert store.retry('TXXX', request.request_id, CHANGE)
+    assert store.fail('TXXX', request.request_id, error = 'yyy', now = CHANGE)
+    assert not store.fail('TXXX', request.request_id, error = 'yyy', now = CHANGE)
+    assert store.load('TXXX', request.request_id) == timesforge.times.request.Request(request_id = request.request_id, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'failed', grant_id = None, error = 'yyy', creation = CREATION)
+    assert store.load('TXXX', request.request_id + 1) is None
