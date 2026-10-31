@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """History of what changed about times channels and the rules for creating them."""
 
 import dataclasses

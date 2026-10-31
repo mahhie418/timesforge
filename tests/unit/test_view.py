@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 import dataclasses
 import datetime
 
@@ -15,7 +18,7 @@ import timesforge.times.request
 
 CREATION = datetime.datetime(2026, 10, 28, 15, 0, tzinfo = datetime.UTC)
 
-PROMPT = 'A times channel is your own public channel, `#times_(First Name)`, where you post whatever you like. Enter your first name, and timesforge creates the channel and invites the members of the workspace. Each member can normally create one times channel, once.'
+PROMPT = 'A times channel is your own public channel, `#times_(First Name)`, where you post whatever you like. Enter your first name, and TimesForge creates the channel and invites the members of the workspace. Each member can normally create one times channel, once.'
 
 REQUEST_RESERVED = timesforge.times.request.Request(request_id = 1, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'reserved', grant_id = None, creation = CREATION)
 REQUEST_PENDING = timesforge.times.request.Request(request_id = 1, user_id = 'UXXX1', first_name = 'Xxx', channel_name = 'times_xxx', status = 'pending_name_resolution', grant_id = None, creation = CREATION)
@@ -111,7 +114,7 @@ def test_view_home_owner() -> None:
     member = timesforge.slack.view.home(refusal = None, eligible = True, request = None, channels = [], exclusions = EXCLUSIONS_LISTED, grants = GRANTS_LISTED, conflicts = [], role = 'member', language = 'en')
 
     assert [block['text']['text'] for block in view['blocks'] if block['type'] == 'header'] == ['Owner actions']
-    assert [(block['text']['text'], block.get('accessory', {}).get('action_id')) for block in view['blocks'] if block['type'] == 'section'][2:] == [('*Name conflicts*\nNone', None), ('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION), ('*Imported channels*\nCheck who holds the times channels created before timesforge, and correct them.', timesforge.slack.view.IMPORT_ACTION), ('*History*\nThe latest changes to the times channels and to who may create them.', timesforge.slack.view.HISTORY_ACTION)]
+    assert [(block['text']['text'], block.get('accessory', {}).get('action_id')) for block in view['blocks'] if block['type'] == 'section'][2:] == [('*Name conflicts*\nNone', None), ('*Excluded members*\n<@UXXX2>, <@UXXX3>', timesforge.slack.view.EXCLUSION_ACTION), ('*Recreation grants*\n<@UXXX4>', timesforge.slack.view.RECREATION_ACTION), ('*Imported channels*\nCheck who holds the times channels created before TimesForge, and correct them.', timesforge.slack.view.IMPORT_ACTION), ('*History*\nThe latest changes to the times channels and to who may create them.', timesforge.slack.view.HISTORY_ACTION)]
     assert [block['type'] for block in member['blocks']] == ['section', 'section']
 
 def test_view_home_conflicts() -> None:

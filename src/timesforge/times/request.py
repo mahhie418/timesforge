@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Requests for times channels, reserved so that no two of them create the same channel."""
 
 import collections.abc

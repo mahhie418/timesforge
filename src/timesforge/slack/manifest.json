@@ -1,14 +1,16 @@
 {
   "display_information": {
     "description": "Creates a times channel for each member from App Home.",
-    "name": "timesforge"
+    "name": "TimesForge"
   },
   "features": {
     "app_home": {
-      "home_tab_enabled": true
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": true
     },
     "bot_user": {
-      "display_name": "timesforge"
+      "display_name": "TimesForge"
     }
   },
   "oauth_config": {

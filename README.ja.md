@@ -1,23 +1,23 @@
-# timesforge
+# TimesForge
 
-[English](README.en.md)
+[English](https://github.com/mahhie418/timesforge/blob/main/README.en.md)
 
-timesforge は、Slack のワークスペースのメンバーが、自分専用の公開チャンネル `#times_<ファーストネーム>` (times チャンネル) を作れるようにします。times チャンネルには、好きなことを自由に投稿できます。メンバーは timesforge の App Home から自分で作成し、timesforge がワークスペースのほかのメンバーを招待します。Slack のフリープランでも使えます。
+TimesForge は、Slack のワークスペースのメンバーが、自分専用の公開チャンネル `#times_<ファーストネーム>` (times チャンネル) を作れるようにします。times チャンネルには、好きなことを自由に投稿できます。メンバーは TimesForge の App Home から自分で作成し、TimesForge がワークスペースのほかのメンバーを招待します。Slack のフリープランでも使えます。
 
-timesforge は、あなたのコンピューターで、ワークスペース内だけで使う Slack app として動きます。Slack とは Socket Mode でつながるので外部に公開する URL は要らず、通信先は Slack だけです。
+TimesForge は、あなたのコンピューターで、ワークスペース内だけで使う Slack app として動きます。Slack とは Socket Mode でつながるので外部に公開する URL は要らず、通信先は Slack だけです。
 
 ## できること
 
-- **App Home からの作成**: メンバーが Slack で timesforge を開いてファーストネームを入力すると、timesforge が裏でチャンネルを作成し、ワークスペースのメンバーを招待します。名前がすでに使われていなければ、誰の承認も待たずに作成されます。
+- **App Home からの作成**: メンバーが Slack で TimesForge を開いてファーストネームを入力すると、TimesForge が裏でチャンネルを作成し、ワークスペースのメンバーを招待します。名前がすでに使われていなければ、誰の承認も待たずに作成されます。
 - **歓迎のメッセージ**: times チャンネルをまだ持っていないメンバーが #welcome などの歓迎用チャンネルに参加すると、bot が App Home へのリンクを付けた DM を 1 回だけ送ります。times チャンネルができると、そのメッセージはチャンネルへのリンクに書き換わります。
 - **1 人 1 回**: times チャンネルを作成できるのは、原則 1 人 1 回です。削除しても作成権は戻りませんが、オーナーがもう 1 回作成できるようにできます。
 - **オーナーは 1 人**: オーナーは App Home で、使われている名前の代わりを決めたり、メンバーを作成対象から外したり、再作成権を与えたり、取り込んだチャンネルの保持者を直したり、履歴を見たりできます。
-- **Slack に合わせた表示**: Slack で times チャンネルをアーカイブ、アーカイブ解除、名前の変更、削除すると、App Home の表示もそれに従います。timesforge より前にメンバーが手で作った times チャンネルは、取り込めます。
+- **Slack に合わせた表示**: Slack で times チャンネルをアーカイブ、アーカイブ解除、名前の変更、削除すると、App Home の表示もそれに従います。TimesForge より前にメンバーが手で作った times チャンネルは、取り込めます。
 
 ## 必要なもの
 
 - macOS か Windows。Linux でも動きますが、setup でログイン時の自動起動は登録できません。
-- [uv](https://docs.astral.sh/uv/) (timesforge と、その実行に必要な Python をインストールします)。
+- [uv](https://docs.astral.sh/uv/) (TimesForge と、その実行に必要な Python をインストールします)。
 - Slack app を作成してインストールできるワークスペース。公開チャンネルを作れるのが管理者だけのワークスペースでは、管理者がインストールします。
 
 ## インストール
@@ -35,15 +35,15 @@ timesforge setup
 setup は次の 4 つの段階を順に案内し、入力した内容を設定ファイルに保存します。
 
 1. **Slack app**: setup が表示するリンクを開いて Slack app を作成します。設定は manifest から自動で入力されます。表示される手順に従って進め、Bot User OAuth Token と App-Level Token を貼り付けます。公開チャンネルを作れるのが管理者だけのワークスペースでは、管理者が Slack app をインストールし、User OAuth Token も貼り付けます。それ以外のワークスペースでは、User OAuth Token は空のままにします。
-2. **オーナー**: timesforge のオーナーにする人のメンバー ID を貼り付けます。メンバー ID は、Slack でその人のプロフィールを開き、⋮ (その他) の「メンバー ID をコピー」でコピーできます。
-3. **歓迎用チャンネル**: #welcome など、新しいメンバーが参加するチャンネルのチャンネル ID を貼り付け、そのチャンネルで `/invite @timesforge` を送って bot を追加します。bot がチャンネルに入るまで setup は先に進まないので、追加したら Enter を押して確認し直します。
-4. **確認と自動起動**: 設定、トークン、データベース、オーナー、歓迎用チャンネルを確認し、Slack にあって timesforge がまだ知らない times チャンネルを一覧にします。それから、ログイン時に Slack app を自動で起動するかどうかを聞きます。自動で起動しないと答えると、登録済みの自動起動を `timesforge stop` と同じように外します。
+2. **オーナー**: TimesForge のオーナーにする人のメンバー ID を貼り付けます。メンバー ID は、Slack でその人のプロフィールを開き、⋮ (その他) の「メンバー ID をコピー」でコピーできます。
+3. **歓迎用チャンネル**: #welcome など、新しいメンバーが参加するチャンネルのチャンネル ID を貼り付け、そのチャンネルで `/invite @TimesForge` を送って bot を追加します。bot がチャンネルに入るまで setup は先に進まないので、追加したら Enter を押して確認し直します。
+4. **確認と自動起動**: 設定、トークン、データベース、オーナー、歓迎用チャンネルを確認し、Slack にあって TimesForge がまだ知らない times チャンネルを一覧にします。それから、ログイン時に Slack app を自動で起動するかどうかを聞きます。自動で起動しないと答えると、登録済みの自動起動を `timesforge stop` と同じように外します。
 
-設定を変えるときは、setup をもう一度実行します。すでに答えてある質問では、後ろの [ ] に今の値 (トークンでは `keep current`) が表示され、Enter を押すとその値のまま進めます。最初の 3 つの段階を手動で行う方法は [Creating the Slack app](docs/slack.md) にあります (英語)。
+設定を変えるときは、setup をもう一度実行します。すでに答えてある質問では、後ろの [ ] に今の値 (トークンでは `keep current`) が表示され、Enter を押すとその値のまま進めます。最初の 3 つの段階を手動で行う方法は [Creating the Slack app](https://github.com/mahhie418/timesforge/blob/main/docs/slack.md) にあります (英語)。
 
 ## 既存の times チャンネルの取り込み
 
-timesforge より前にメンバーが手で作った times チャンネルがあれば、誰の times チャンネルかを timesforge に伝えるために取り込みます。各チャンネルの ID を、その保持者のメンバー ID に対応させた JSON ファイルを書きます。
+TimesForge より前にメンバーが手で作った times チャンネルがあれば、誰の times チャンネルかを TimesForge に伝えるために取り込みます。各チャンネルの ID を、その保持者のメンバー ID に対応させた JSON ファイルを書きます。
 
 ```json
 {"C0123ABCDEF": "U0123ABCDE", "C0456GHIJKL": "U0456FGHIJ"}
@@ -56,13 +56,13 @@ timesforge import --mapping channels.json --dry-run
 timesforge import --mapping channels.json --apply
 ```
 
-`--dry-run` は、各チャンネルを取り込めるかどうかを表示するだけで、何も変えません。`--apply` は、すべてのチャンネルを取り込めるときだけ取り込みます。表示される各行の意味は [Running timesforge in a workspace](docs/deployment.md) にあります (英語)。
+`--dry-run` は、各チャンネルを取り込めるかどうかを表示するだけで、何も変えません。`--apply` は、すべてのチャンネルを取り込めるときだけ取り込みます。表示される各行の意味は [Running TimesForge in a workspace](https://github.com/mahhie418/timesforge/blob/main/docs/deployment.md) にあります (英語)。
 
 ## App Home
 
 メンバーは、次のように times チャンネルを作成します。
 
-1. Slack で timesforge を開いてホームタブを表示するか、歓迎のメッセージの「times を作成する」を選択します。
+1. Slack で TimesForge を開いてホームタブを表示するか、歓迎のメッセージの「times を作成する」を選択します。
 2. 「times チャンネルを作成」を選択し、ファーストネームを A〜Z の英字で入力して「作成」を選択します。
 3. チャンネルができると、App Home に表示されます。名前がすでに使われているときは、オーナーが別の名前を決めます。
 
@@ -74,11 +74,11 @@ timesforge import --mapping channels.json --apply
 - **取り込んだチャンネル**: 「確認」で、取り込んだチャンネルの保持者を変更します。
 - **履歴**: 「履歴を見る」で、times チャンネルと作成対象の最近の変更を表示します。
 
-誰が times チャンネルを作成でき、誰が招待されるか、オーナーと作成対象外の扱いは [Times channels and who may create them](docs/permissions.md) に、times チャンネルのアーカイブや削除と再作成権については [Deleted times channels and recreation](docs/recreation.md) にあります (どちらも英語)。
+誰が times チャンネルを作成でき、誰が招待されるか、オーナーと作成対象外の扱いは [Times channels and who may create them](https://github.com/mahhie418/timesforge/blob/main/docs/permissions.md) に、times チャンネルのアーカイブや削除と再作成権については [Deleted times channels and recreation](https://github.com/mahhie418/timesforge/blob/main/docs/recreation.md) にあります (どちらも英語)。
 
 ## 設定
 
-timesforge は、設定フォルダの `timesforge.env` を読み込みます。同じ名前の環境変数があれば、そちらを優先します。
+TimesForge は、設定フォルダの `timesforge.env` を読み込みます。同じ名前の環境変数があれば、そちらを優先します。
 
 | OS | 設定ファイル | データフォルダ |
 |---|---|---|
@@ -110,13 +110,13 @@ timesforge は、設定フォルダの `timesforge.env` を読み込みます。
 | `timesforge import --mapping FILE --apply` | 対応表のファイルにある times チャンネルを、すべて取り込めるときに取り込みます |
 | `timesforge manifest` | Slack app を作成するための manifest を表示します |
 
-## timesforge を動かす
+## TimesForge を動かす
 
 App Home、歓迎のメッセージ、times チャンネルの作成は、Slack app が動いている間だけ動作します。setup でログイン時の自動起動を登録した場合は、すでに動いています。エラーで止まったときも自動で再起動し、出力はデータフォルダの `start.log` に書き込まれます。登録していない場合は、`timesforge start` を実行したままにしてください。
 
 Slack app は起動すると、止まっている間に Slack で変わったことを反映し、作成の途中だった times チャンネルを作り終えます。
 
-1 つのワークスペースに対して動かす Slack app は、1 つだけにしてください。同じデータフォルダで 2 つ目を起動しようとすると timesforge が止めますが、2 台のコンピューターで動かすと、Slack がイベントやボタンの操作を両方に振り分けてしまいます。
+1 つのワークスペースに対して動かす Slack app は、1 つだけにしてください。同じデータフォルダで 2 つ目を起動しようとすると TimesForge が止めますが、2 台のコンピューターで動かすと、Slack がイベントやボタンの操作を両方に振り分けてしまいます。
 
 Slack app を再起動するには (設定ファイルを変更したときなど):
 
@@ -126,10 +126,20 @@ Slack app を再起動するには (設定ファイルを変更したときな�
 
 Slack app を止めて、ログイン時の自動起動をやめるには、`timesforge stop` を実行します。
 
+## 更新とアンインストール
+
+TimesForge を新しい版に更新するには、`uv tool upgrade timesforge` を実行してから、Slack app を再起動します。新しい版で manifest が変わったときは、[Update the app](https://github.com/mahhie418/timesforge/blob/main/docs/slack.md#update-the-app) (英語) の手順で Slack app も更新します。
+
+TimesForge をアンインストールするには、`timesforge stop` で Slack app とログイン時の自動起動を止めるか、`timesforge start` を Ctrl+C で止めてから、`uv tool uninstall timesforge` を実行します。設定ファイルとデータフォルダは残るので、要らなければ削除してください。データフォルダのデータベースは、誰がどの times チャンネルを持っているかの唯一の記録です。Slack app と times チャンネルも、Slack で削除するまで残ります。
+
 ## 注意
 
-- Slack では、各 times チャンネルの作成者として、bot か、そのチャンネルを作成したユーザートークンの管理者が表示されます。保持者は timesforge が記録しているので、作成者の表示は関係ありません。その管理者はすべての times チャンネルのメンバーにもなりますが、退出してかまいません。
+- Slack では、各 times チャンネルの作成者として、bot か、そのチャンネルを作成したユーザートークンの管理者が表示されます。保持者は TimesForge が記録しているので、作成者の表示は関係ありません。その管理者はすべての times チャンネルのメンバーにもなりますが、退出してかまいません。
 - 後からワークスペースに参加したメンバーは、既存の times チャンネルには招待されません。参加してもらうには、times チャンネルをワークスペースのデフォルトチャンネルに加えるか、各自で参加してもらってください。
 - フリープランでは、Slack は直近 90 日のメッセージしか表示しないので、古い歓迎のメッセージは見えなくなることがあります。times チャンネルを作成できるかどうかは、App Home にいつでも表示されます。
 - 設定ファイルには Slack のトークンが含まれます。macOS と Linux では、本人だけが読めるように保存します。
-- 誰がどの times チャンネルを持ち、誰が作成できるかの記録は、データフォルダのデータベースにしかありません。バックアップしてください。バックアップの方法は、歓迎のメッセージや障害からの復旧とあわせて [Running timesforge in a workspace](docs/deployment.md) にあります (英語)。
+- 誰がどの times チャンネルを持ち、誰が作成できるかの記録は、データフォルダのデータベースにしかありません。バックアップしてください。バックアップの方法は、歓迎のメッセージや障害からの復旧とあわせて [Running TimesForge in a workspace](https://github.com/mahhie418/timesforge/blob/main/docs/deployment.md) にあります (英語)。
+
+## ライセンス
+
+TimesForge は MIT License で公開しています。詳しくは [LICENSE](https://github.com/mahhie418/timesforge/blob/main/LICENSE) を参照してください。

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """SQLite storage for data kept between runs."""
 
 import collections.abc

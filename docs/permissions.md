@@ -2,7 +2,7 @@
 
 ## Members and everyone else
 
-timesforge tells members from everyone else by their Slack accounts:
+TimesForge tells members from everyone else by their Slack accounts:
 
 - The primary owner, the owners, the admins and the members of the workspace may create a times channel, and they are invited to the times channels of others.
 - Guests, both multi-channel and single-channel, bots, workflow bots, Slackbot, deactivated users, people who were invited but have not joined yet and people from other organisations may not create one, and they are not invited.
@@ -11,7 +11,7 @@ App Home tells everyone who is not a member that only members can create a times
 
 ## The holder
 
-The member who asks for a times channel holds it. timesforge records the holder in its database, whoever Slack shows as the creator of the channel: the bot, or the admin whose user token created it. App Home shows each member the times channels that they hold or held.
+The member who asks for a times channel holds it. TimesForge records the holder in its database, whoever Slack shows as the creator of the channel: the bot, or the admin whose user token created it. App Home shows each member the times channels that they hold or held.
 
 ## One times channel each
 
@@ -31,13 +31,13 @@ If Slack has a channel with the name already, the request waits for the owner, w
 
 ## Invitations
 
-Once a times channel exists, timesforge invites to it the members of the workspace, as listed under the first heading. The members whom the owner excluded are invited too. If the invitations are cut off, timesforge finishes them when it starts again.
+Once a times channel exists, TimesForge invites to it the members of the workspace, as listed under the first heading. The members whom the owner excluded are invited too. If the invitations are cut off, TimesForge finishes them when it starts again.
 
 People who join the workspace after a times channel was created are not invited to it. To have them join the times channels, add the channels to the default channels of the workspace, or ask them to join.
 
 ## The owner
 
-`TIMESFORGE_OWNER_ID` names the one owner of timesforge. Only the owner sees **Owner actions** in App Home, and timesforge checks again that the person is the owner whenever they open or submit an owner action. The owners and the admins of the Slack workspace have no part in timesforge unless one of them is its owner.
+`TIMESFORGE_OWNER_ID` names the one owner of TimesForge. Only the owner sees **Owner actions** in App Home, and TimesForge checks again that the person is the owner whenever they open or submit an owner action. The owners and the admins of the Slack workspace have no part in TimesForge unless one of them is its owner.
 
 To hand the role to someone else, run `timesforge setup` again, or change `TIMESFORGE_OWNER_ID` in the settings file, then restart the Slack app.
 

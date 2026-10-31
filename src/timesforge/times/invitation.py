@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Invitations of workspace members to times channels, with the result for each member."""
 
 import collections.abc

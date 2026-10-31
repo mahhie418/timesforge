@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Slack app of the workspace, connected to Slack through Socket Mode."""
 
 import collections.abc

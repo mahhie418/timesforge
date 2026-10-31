@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Command-line entry point."""
 
 import argparse
@@ -248,7 +251,7 @@ def _setup(
 ) -> int:
 
     print()
-    _console().print(rich.text.Text.assemble((timesforge.product.NAME, 'bold'), ' ', (f'(Version: {timesforge.product.VERSION})', 'dim')))
+    _console().print(rich.text.Text.assemble(('TimesForge', 'bold'), ' ', (f'(Version: {timesforge.product.VERSION})', 'dim')))
 
     try:
 
@@ -270,6 +273,7 @@ def _setup(
 
     except (EOFError, KeyboardInterrupt):
 
+        print(file = sys.stderr)
         _report('ERROR', 'Setup was stopped', blank = True)
 
         return 1
@@ -337,7 +341,7 @@ def _appoint() -> None:
     settings = timesforge.configuration.load()
     client = timesforge.slack.api.connect(settings.slack_bot_token)
 
-    print(f'\nChoose who owns {timesforge.product.NAME} in Slack, and copy their member ID.')
+    print('\nChoose who owns TimesForge in Slack, and copy their member ID.')
     _steps('In Slack, open their profile.', 'Choose ⋮ (More), then Copy member ID.')
 
     while True:
@@ -374,20 +378,18 @@ def _welcome() -> None:
     channel = settings.timesforge_channel_id_welcome
 
     print('\nChoose the channel that new members join, such as #welcome, and copy its channel ID.')
-    _steps('In Slack, open the channel and choose its name at the top.', 'At the bottom of About, copy the channel ID.', f'In the channel, send /invite @{timesforge.product.NAME} so that the bot joins it.')
+    _steps('In Slack, open the channel and choose its name at the top.', 'At the bottom of About, copy the channel ID.', 'In the channel, send /invite @TimesForge so that the bot joins it.')
 
     while True:
 
         print()
         channel = _ask('Channel ID of the welcome channel', channel, secret = False)
 
-        try: name = _inspect(client, channel)
+        try: _inspect(client, channel)
         except (timesforge.configuration.ConfigurationError, slack_sdk.errors.SlackApiError) as error: _report('ERROR', str(error), blank = True)
         else: break
 
     timesforge.configuration.save({'TIMESFORGE_CHANNEL_ID_WELCOME': channel})
-
-    _report('OK', f'welcome channel: #{name}', blank = True)
 
 def _inspect(
     client: slack_sdk.web.WebClient,

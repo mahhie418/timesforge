@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Views of the Slack app: the App Home, its modals and its messages."""
 
 import datetime
@@ -5,7 +8,6 @@ import typing
 
 import timesforge.configuration
 import timesforge.localisation
-import timesforge.product
 import timesforge.slack.permission
 import timesforge.times.exclusion
 import timesforge.times.history
@@ -97,7 +99,7 @@ def home(
     blocks = []
 
     if role != 'member': blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': timesforge.localisation.translate(f'home.role.{role}', language)}]})
-    if button is not None: blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': timesforge.localisation.translate('home.prompt', language, product = timesforge.product.NAME)}})
+    if button is not None: blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': timesforge.localisation.translate('home.prompt', language)}})
 
     blocks.append(_item(timesforge.localisation.translate('home.times', language), text, button))
 
@@ -349,7 +351,7 @@ def welcome(
     """
 
     title = timesforge.localisation.translate('welcome.title', language, workspace = workspace)
-    body = timesforge.localisation.translate('welcome.body', language, workspace = workspace, product = timesforge.product.NAME)
+    body = timesforge.localisation.translate('welcome.body', language, workspace = workspace)
     link = f"<slack://app?team={team_id}&id={app_id}&tab=home|{timesforge.localisation.translate('welcome.action', language)}>"
 
     return f'{title}\n{body}', [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': f'*{title}*\n{body}'}}, {'type': 'section', 'text': {'type': 'mrkdwn', 'text': link}}]

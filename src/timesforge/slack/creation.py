@@ -1,4 +1,7 @@
-"""Creation of public times channels in Slack for the requests that timesforge reserved."""
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
+"""Creation of public times channels in Slack for the requests that TimesForge reserved."""
 
 import datetime
 import typing

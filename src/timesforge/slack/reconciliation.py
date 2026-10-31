@@ -1,4 +1,7 @@
-"""Reconciliation of the times channels that timesforge knows with their state in Slack."""
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
+"""Reconciliation of the times channels that TimesForge knows with their state in Slack."""
 
 import collections.abc
 import datetime

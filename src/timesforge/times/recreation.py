@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Mahiro Sakaue
+# SPDX-License-Identifier: MIT
+
 """Recreation grants, which the owner gives members whose times channels were deleted."""
 
 import dataclasses

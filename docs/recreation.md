@@ -1,8 +1,8 @@
 # Deleted times channels and recreation
 
-## What timesforge follows
+## What TimesForge follows
 
-timesforge never archives, renames or deletes a times channel itself. When someone does so in Slack, timesforge records it as it happens:
+TimesForge never archives, renames or deletes a times channel itself. When someone does so in Slack, TimesForge records it as it happens:
 
 - An archived times channel stays the member's. They cannot create another while it exists, and restoring it in Slack makes it active again.
 - A renamed times channel keeps its holder, and App Home shows the new name.
@@ -12,7 +12,7 @@ When the Slack app starts, it checks every times channel against Slack, so that 
 
 ## Deleting a times channel
 
-To delete a times channel, delete it in Slack, as someone whom the workspace settings allow to delete channels. There is nothing to do in timesforge.
+To delete a times channel, delete it in Slack, as someone whom the workspace settings allow to delete channels. There is nothing to do in TimesForge.
 
 Deleting the channel does not give the member the right to create another. App Home then tells them that creating another needs permission from the owner, and the welcome message is not sent again.
 

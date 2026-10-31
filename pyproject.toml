@@ -3,10 +3,26 @@ name = "timesforge"
 version = "0.1.0"
 description = "Create a times channel for each member of a Slack workspace from App Home."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Mahiro Sakaue", email = "mahhie418@gmail.com" }
 ]
 requires-python = ">=3.14"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Natural Language :: English",
+    "Natural Language :: Japanese",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Chat"
+]
 dependencies = [
     "platformdirs>=4.13.5",
     "python-dotenv>=1.2.4",
@@ -14,6 +30,11 @@ dependencies = [
     "slack-bolt>=1.30.0",
     "slack-sdk>=3.45.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mahhie418/timesforge"
+Repository = "https://github.com/mahhie418/timesforge"
+Issues = "https://github.com/mahhie418/timesforge/issues"
 
 [project.scripts]
 timesforge = "timesforge.terminal:main"
@@ -26,6 +47,7 @@ build-backend = "uv_build"
 dev = [
     "pre-commit>=4.7.0",
     "pytest>=9.1.1",
+    "reuse[charset-normalizer]>=6.2.0",
     "ruff>=0.17.2",
     "ty>=0.0.91",
 ]
@@ -36,7 +58,7 @@ src = ["src", "scripts"]
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "C90", "CPY", "EM", "INP", "TC", "TRY", "PLR09",
+    "C90", "EM", "INP", "TC", "TRY", "PLR09",
     "COM812", "D201", "D202", "D211", "E501", "E701", "E702", "ICN001", "PTH118"
 ]
 
@@ -51,6 +73,9 @@ ignore = [
     "D",
     "PLR2004", "S101", "S105", "S106"
 ]
+
+[tool.ruff.lint.flake8-copyright]
+notice-rgx = "SPDX-FileCopyrightText: \\d{4}"
 
 [tool.ruff.lint.flake8-quotes]
 inline-quotes = "single"
